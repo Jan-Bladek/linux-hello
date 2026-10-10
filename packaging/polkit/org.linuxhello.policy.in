@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <!-- DESIGN RESERVATION ONLY: not installed by any package. No current daemon
+       method invokes these actions. All defaults deny; no implied authorization. -->
+  <action id="org.linuxhello.enroll">
+    <description>Enroll a Linux Hello face template</description>
+    <message>Face enrollment is unavailable in this development preview</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+  <action id="org.linuxhello.remove-enrollment">
+    <description>Remove a Linux Hello face template</description>
+    <message>Face enrollment management is unavailable in this development preview</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

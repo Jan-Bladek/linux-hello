@@ -1,0 +1,86 @@
+name: Build and security checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  linux:
+    name: Linux workspace and release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install Linux build libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang libclang-dev libudev-dev libdbus-1-dev dbus-daemon \
+            libfontconfig1-dev libfreetype6-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Unit tests
+        run: cargo test --workspace --locked
+      - name: Isolated session-bus integration tests
+        run: bash tests/integration/run-session.sh
+      - name: Release compilation
+        run: cargo build --workspace --release --locked
+      - name: Nonprivileged executable smoke tests
+        run: |
+          target/release/hello --help
+          target/release/hello security
+          target/release/hello-daemon --help
+      - name: Check service configuration
+        run: |
+          sudo install -D -m 0755 target/release/hello-daemon /usr/libexec/hello-daemon
+          systemd-analyze verify packaging/systemd/linux-hello.service
+          bash -n packaging/fedora/prepare-source.sh
+
+  portable:
+    name: Portable security libraries
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.99.0 --profile minimal
+      - run: cargo test --locked -p hello-core -p hello-face -p hello-storage -p hello-ipc -p hello-pam
+
+  dependencies:
+    name: Advisory and license policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.99.0 --profile minimal
+      - name: Install pinned audit tools
+        run: |
+          cargo install --locked cargo-audit --version 0.22.2
+          cargo install --locked cargo-deny --version 0.20.2
+      - name: RustSec advisories
+        run: cargo audit --deny warnings
+      - name: Dependency license and source checks
+        if: ${{ !cancelled() }}
+        run: cargo deny --locked check licenses sources bans

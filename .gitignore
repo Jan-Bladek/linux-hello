@@ -1,0 +1,7 @@
+/target/
+*.rpm
+*.src.rpm
+*.key
+*.template
+/vendor/
+/work/

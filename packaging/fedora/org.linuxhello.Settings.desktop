@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Linux Hello Diagnostics
+Comment=Inspect cameras and Linux Hello security readiness
+Exec=hello-settings
+Icon=camera-web
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupNotify=true

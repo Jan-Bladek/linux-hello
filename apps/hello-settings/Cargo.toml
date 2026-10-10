@@ -1,0 +1,22 @@
+[package]
+name = "hello-settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "GPL-3.0-only"
+build = "build.rs"
+
+[dependencies]
+slint.workspace = true
+hello-camera.workspace = true
+hello-core.workspace = true
+hello-ipc.workspace = true
+hello-fingerprint.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[lints]
+workspace = true
