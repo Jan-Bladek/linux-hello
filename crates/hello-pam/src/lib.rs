@@ -2,6 +2,7 @@
 //! `sudo-pam` feature exports a sudo-only experimental PAM adapter backed by an
 //! installed root-owned verifier and protected, UID-bound enrollment. It does
 //! not advertise qualified PAD or enable the diagnostic D-Bus daemon for auth.
+//! `kde-pam` also permits explicitly opted-in root Plasma Login/SDDM helpers.
 #![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(all(feature = "privileged", target_os = "linux"))]
@@ -15,8 +16,8 @@ pub fn blockers() -> &'static [&'static str] {
     &[
         "Representative NIR FAR/FRR and presentation attacks are not validated",
         "General-purpose privileged authentication IPC remains unavailable",
-        "sudo adapter requires explicit features, root installation and enrollment",
-        "Production login/sshd and disposable-VM recovery qualification remains unavailable",
+        "sudo/KDE adapters require explicit features, root installation and enrollment",
+        "Production security qualification, sshd and disposable-VM recovery remain unavailable",
     ]
 }
 

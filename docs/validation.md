@@ -947,3 +947,44 @@ storage regressions, default workspace, optional tests, Clippy, formatting,
 18 Python tests and release compilation passed. Live owner matches are functional
 checks, not representative FAR/FRR or presentation-attack measurements. PAD remains
 unvalidated; no login/sshd/system-auth integration is enabled.
+
+## KDE login integration preparation — 2026-10-12
+
+This host actually runs plasma-login-manager6.7.5 (not SDDM); its PAM default is
+`/usr/lib/pam.d/plasmalogin`. Implemented explicit `hello-pam/kde-pam`, per-user
+root-only service opt-in, protected existing UID1000 reference reuse, root greeter
+claim handling, exact one-substack PAM jump, vendor override backup/rollback and
+live pre-activation probes in the actual SELinux `xdm_t` domain. sudo behavior is
+preserved; screen lock/greeter/autologin/sshd are excluded. Added a tiny policy
+allowing only xdm_t→v4l_device_t chr_file map (existing Fedora policy already allows
+read/write/ioctl). No enforcing-mode change or blanket generated policy.
+
+Installed compiled module/helper, root-only diagnostic probe, management/activation
+scripts and SELinux policy. Root `xdm_t` negative PAM tests passed for absent/bad
+marker, greeter/autologin/root account and permit/deny fallback dispatch. The
+production camera and pinned models work in that domain. A captured live frame
+scored0.5011 at provisional0.80 and correctly rejected; no owner-positive KDE test
+is claimed from that attempt. A later strict pre-activation probe also rejected.
+Both failures left production login PAM unchanged and removed the temporary marker.
+
+Initial full-stack confdir probe failed with PAM_PERM_DENIED because include files
+were absent in the test confdir; the harness now snapshots trusted vendor files
+and admin/authselect overrides. Repeated actual KDE password fallback with the
+installed detector deliberately unavailable succeeded with the original masked
+password: PAM_AUTHENTICATE=0, PAM_ACCT_MGMT=0, PAM_SETCRED=0 in enforcing xdm_t.
+Model and prior marker were restored in finally. No desktop session opened or
+password written to a file/environment/argument. Added helper parent-death
+SIGTERM supervision; root live subprocess test verified non-successful exit and
+reaping within0.050s after parent exit (no acceptance after cancellation).
+
+Rust default workspace, PAM5 + helper1 feature tests, Clippy default/feature,
+formatting, release compile, C -Wall/-Wextra/-Werror, checkmodule/semodule_package,
+shell syntax, diff checks and Python21 passed. PAM jump/reversible rollback tests
+preserve preceding SELinux controls, later wallet hooks and account/session groups.
+KDE activation still needs the enrolled owner facing the camera: activation
+requires first an adapter-only match with deny fallback, then the proposed complete
+PAM/account/setcred stack. An installed activate-kde.sh terminal was opened for
+that owner test. No logout, desktop restart or physical greeter/session success
+is claimed yet. Existing sudo remains enabled. See docs/kde-login.md for exact
+activation, use, recovery and security limits. No PAD or representative NIR FAR/FRR
+has been qualified.

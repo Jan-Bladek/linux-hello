@@ -273,3 +273,11 @@ and `sudo-face` features. Installation leaves PAM unchanged; root-authorized
 reference import and live checks precede sudo-only activation. Existing password
 fallback is retained. PAD and NIR FAR/FRR are not validated. See
 [installation, activation and rollback](docs/sudo-integration.md).
+
+## Optional KDE login integration
+
+The explicit `hello-pam/kde-pam` feature also supports root Plasma Login Manager
+and SDDM helpers with independent root-only per-account/service opt-in. Activation
+tests the proposed PAM stack in Fedora’s enforcing SELinux domain before an
+atomic change, preserving password, wallet, account and session hooks. See
+[KDE login installation, testing and rollback](docs/kde-login.md).

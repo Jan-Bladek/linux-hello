@@ -1,0 +1,10 @@
+module linuxhello_kde 1.0;
+require {
+    type xdm_t;
+    type v4l_device_t;
+    class chr_file map;
+}
+# Fedora already permits the root display-manager domain to read/write/ioctl
+# V4L devices. Its existing rules omit MMAP, which our bounded capture needs.
+# No new access to keys, home files, networking or unconfined domains is granted.
+allow xdm_t v4l_device_t:chr_file map;

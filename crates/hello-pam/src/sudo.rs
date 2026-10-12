@@ -1,5 +1,7 @@
 //! Opt-in sudo-only PAM adapter. Native inference never runs inside sudo.
 use crate::boundary;
+#[cfg(feature = "kde-pam")]
+use std::io::Read;
 use std::{
     ffi::{CStr, c_char, c_int, c_void},
     path::Path,
@@ -21,7 +23,17 @@ unsafe extern "C" {
     ) -> c_int;
 }
 fn permitted(service: &str, uid: u32, caller: u32) -> bool {
-    matches!(service, "sudo" | "sudo-i") && uid >= 1000 && uid == caller
+    if uid < 1000 {
+        return false;
+    }
+    match service {
+        "sudo" | "sudo-i" => uid == caller,
+        #[cfg(feature = "kde-pam")]
+        // A root display-manager helper supplies the selected PAM_USER. There
+        // is no logged-in caller and no PAM_RUSER to use before login.
+        "plasmalogin" | "sddm" => caller == 0,
+        _ => false,
+    }
 }
 fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
     // SAFETY: geteuid/getuid take no pointers.
@@ -48,7 +60,7 @@ fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
     // PAM_RUSER set by the trusted sudo plugin, never SUDO_USER/environment.
     // SAFETY: getuid has no preconditions.
     let mut caller = unsafe { libc::getuid() };
-    if caller == 0 {
+    if caller == 0 && matches!(service, "sudo" | "sudo-i") {
         let mut ruser = std::ptr::null();
         // SAFETY: live PAM handle and writable output, item 8 is PAM_RUSER.
         if unsafe { pam_get_item(pamh, 8, &mut ruser) } != PAM_SUCCESS || ruser.is_null() {
@@ -60,6 +72,23 @@ fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
     }
     if !permitted(service, uid, caller) {
         return None;
+    }
+    #[cfg(feature = "kde-pam")]
+    if matches!(service, "plasmalogin" | "sddm") {
+        // Independent, root-only, per-account opt-in. Merely enabling sudo or
+        // loading this module in a greeter/autologin stack cannot enable login.
+        let marker = Path::new(boundary::ROOT)
+            .join(uid.to_string())
+            .join(format!("pam-{service}.enabled"));
+        let mut bytes = Vec::new();
+        boundary::protected_file(&marker, true, 64)
+            .ok()?
+            .take(65)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        if bytes != b"linux-hello-login-v1\n" {
+            return None;
+        }
     }
     boundary::protected_file(Path::new(boundary::HELPER), false, 100_000_000).ok()?;
     // Only the configured UID can enable this path. Missing enrollment falls
@@ -226,5 +255,25 @@ mod tests {
         assert!(!permitted("sudo", 0, 0));
         assert!(!permitted("sudo", 1001, 1000));
         assert!(authenticate(std::ptr::null_mut(), true).is_none());
+    }
+    #[test]
+    fn graphical_login_requires_a_root_greeter_and_normal_claimed_account() {
+        for service in ["plasmalogin", "sddm"] {
+            assert_eq!(permitted(service, 1000, 0), cfg!(feature = "kde-pam"));
+            assert!(!permitted(service, 1000, 1000));
+            assert!(!permitted(service, 0, 0));
+        }
+        for service in [
+            "plasmalogin-greeter",
+            "plasmalogin-autologin",
+            "sddm-greeter",
+            "sddm-autologin",
+            "kde",
+            "kde-fingerprint",
+            "login",
+            "sshd",
+        ] {
+            assert!(!permitted(service, 1000, 0));
+        }
     }
 }

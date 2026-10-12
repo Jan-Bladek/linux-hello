@@ -125,3 +125,7 @@ unknown faces, multiple faces, duplicate/poor frames, cancellation and timeouts.
 Physical positive recognition and covered-camera password fallback require the
 owner's presence after protected provisioning; representative NIR FAR/FRR and
 presentation attacks remain unvalidated.
+
+A separate explicit [`kde-pam` opt-in](kde-login.md) can now reuse the same protected
+reference for the KDE display manager. It has independent per-service/account
+markers and PAM activation; enabling sudo alone never enables graphical login.

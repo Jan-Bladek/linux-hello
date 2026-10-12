@@ -279,6 +279,10 @@ async fn main() {
     }
 }
 async fn run() -> Result<(), Error> {
+    // Snapshot the root PAM/sudo parent before any enrollment/inference work.
+    // A cancelled graphical login must not leave its camera verifier orphaned.
+    // SAFETY: getppid takes no pointers.
+    let parent = unsafe { libc::getppid() };
     // SAFETY: libc calls use constants and an initialized resource-limit struct.
     if unsafe { libc::geteuid() } != 0 {
         return Err("Run the installed helper through sudo".into());
@@ -304,6 +308,15 @@ async fn run() -> Result<(), Error> {
         tokio::select! { _=terminate.recv()=>(), _=interrupt.recv()=>() };
         signals.store(true, Ordering::Release);
     });
+    // SAFETY: PDEATHSIG takes a constant integer signal, no pointer argument.
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
+        return Err("Cannot supervise biometric process parent".into());
+    }
+    // SAFETY: getppid has no preconditions. Close the registration race before
+    // using keys/camera; SIGTERM already has the graceful cancellation handler.
+    if parent == 1 || unsafe { libc::getppid() } != parent {
+        return Err("Authentication parent disconnected".into());
+    }
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let result = match args.as_slice() {
         [command, uid] if command == "verify" => verify(uid.parse()?, cancel, false).await,

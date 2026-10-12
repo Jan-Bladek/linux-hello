@@ -11,6 +11,7 @@ crate-type = ["rlib", "cdylib"]
 [features]
 privileged = ["dep:libc"]
 sudo-pam = ["privileged"]
+kde-pam = ["sudo-pam"]
 
 [dependencies]
 hello-ipc.workspace = true

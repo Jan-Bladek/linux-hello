@@ -75,8 +75,8 @@ jobs:
       - name: Optional adapter checks (no weights or camera)
         run: |
           . "$HOME/.cargo/env"
-          cargo test --locked -p hello-face -p hello-cli -p hello-settings -p hello-sudo -p hello-pam --features hello-settings/face-diagnostics,hello-sudo/sudo-face,hello-pam/sudo-pam
-          cargo clippy --locked -p hello-face -p hello-cli -p hello-settings -p hello-sudo -p hello-pam --all-targets --features hello-settings/face-diagnostics,hello-sudo/sudo-face,hello-pam/sudo-pam -- -D warnings
+          cargo test --locked -p hello-face -p hello-cli -p hello-settings -p hello-sudo -p hello-pam --features hello-settings/face-diagnostics,hello-sudo/sudo-face,hello-pam/kde-pam
+          cargo clippy --locked -p hello-face -p hello-cli -p hello-settings -p hello-sudo -p hello-pam --all-targets --features hello-settings/face-diagnostics,hello-sudo/sudo-face,hello-pam/kde-pam -- -D warnings
 
   portable:
     name: Portable security libraries
