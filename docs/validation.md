@@ -1122,3 +1122,8 @@ first strict scan; no production locker PAM change or new opt-in remained.
 Owner identity/presence in this agent-triggered scan is not established. Existing
 display-manager login remains enabled; locker activation still requires the
 owner to run `activate-lock.sh` facing the enrolled camera for both real scans.
+
+Subsequent owner confirmation (2026-10-12): unlocking after Win + L works.
+This confirms the owner's successful use of the installed locker integration;
+it is not a measured FAR/FRR or presentation attack evaluation. No additional
+activation trace, latency measurements or camera samples were supplied.
