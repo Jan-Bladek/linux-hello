@@ -35,6 +35,7 @@ def main():
         tmp=Path(tmp);state=tmp/'state';state.mkdir();profile=state/str(uid);profile.mkdir()
         (profile/'config.json').write_text('{}')
         (profile/'pam-plasmalogin.enabled').write_text('linux-hello-login-v1\n')
+        (profile/'pam-kde.enabled').write_text('linux-hello-login-v1\n')
         conf=tmp/'conf';conf.mkdir()
         (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
         fixture=tmp/'fixture.c'
@@ -75,6 +76,23 @@ def main():
                 assert old.returncode!=0 and 'PAM_AUTHENTICATE=6' in old.stderr,'old numeric jump should reproduce the missing positive auth result'
             full=m.changed(source.read_text(),True)
             (conf/'plasmalogin').write_text(full)
+            locker=Path('/etc/pam.d/kde').read_text()
+            (conf/'kde').write_text(m.changed(locker,True))
+            (conf/m.SUBSTACK).write_text(m.AUTH_STACK)
+            conf.chmod(0o755)
+            for path in conf.iterdir(): path.chmod(0o644)
+            gid=pwd.getpwnam(user).pw_gid
+            lock_command=['/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid),'--init-groups',str(probe),'kde',user,str(conf)]
+            assert subprocess.run(lock_command,timeout=10).returncode==0,'unprivileged locker must verify only its own account via the setuid launcher'
+            launch=['/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid),'--init-groups',str(BASE/'hello-lock-verify')]
+            assert subprocess.run(launch+['verify',str(uid)],timeout=10).returncode!=0,'launcher must reject all supplied commands and target IDs'
+            assert subprocess.run([str(BASE/'hello-lock-verify')],timeout=10).returncode!=0,'root/system real UID must not use the launcher'
+            lock_marker=profile/'pam-kde.enabled'
+            lock_marker.unlink()
+            assert subprocess.run(lock_command,timeout=10).returncode!=0,'missing locker opt-in must reject'
+            lock_marker.write_text('corrupt\n')
+            assert subprocess.run(lock_command,timeout=10).returncode!=0,'corrupt locker opt-in must reject'
+            lock_marker.write_text('linux-hello-login-v1\n')
             (conf/m.SUBSTACK).write_text(m.AUTH_STACK)
             subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)],check=True)
             assert subprocess.run(command,timeout=10).returncode==0,'matched face must complete the real KDE parent stack'
@@ -84,6 +102,7 @@ def main():
             (conf/'plasmalogin').write_text(full)
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/mount','--bind',str(bad),str(BASE/'hello-sudo')],check=True)
+            assert subprocess.run(lock_command,timeout=10).returncode!=0,'unprivileged locker mismatch must reject'
             assert subprocess.run(command,timeout=10).returncode!=0,'rejected verifier must not authenticate'
             (conf/m.SUBSTACK).write_bytes(m.diagnostic_stack(m.AUTH_STACK.encode()))
             assert subprocess.run(command,timeout=10).returncode!=0,'diagnostic rejection must retain the password fallback'

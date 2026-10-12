@@ -1086,3 +1086,39 @@ was not independently established for that agent-triggered attempt. It did not
 activate production KDE PAM. The owner must run the installed activation again
 while facing the original camera. No threshold, model, enrollment, or SELinux
 enforcement was weakened to force acceptance; existing sudo remains enabled.
+
+### KScreenLocker self-account verification (2026-10-12)
+
+The owner confirmed successful display-manager activation (two real minima0.868
+and0.880, AUTH/ACCT/SETCRED0) and subsequently reported that actual login works.
+Login is now enabled for jan; this observation does not validate PAD or NIR FAR/FRR.
+
+Added separate `kde` locker opt-in, preserving the display-manager configuration.
+Upstream6.7 and installed Fedora files confirm PAM runs unprivileged for this
+service. The module accepts only PAM_USER matching its kernel real UID, and
+invokes an installed small root-owned setuid launcher. The launcher accepts no
+arguments, root/system callers, identities, commands, enrollment or diagnostics;
+it validates protected own-account opt-in, fixed helper/config, disables dumps,
+closes inherited descriptors, clears the environment, changes cwd to root and
+execs only the existing fixed verifier with its real UID. Real UID remains the
+caller so PAM timeout cancellation can signal its child. Biometric templates
+remain root-private, and matching/security/cleanup rules are unchanged.
+
+Rust PAM8 feature +1 default, feature Clippy, release, C warnings-as-errors,
+Python26, formatting, shell and diff checks passed. The namespace-isolated real
+PAM regression now covers the installed setuid launcher from a non-root caller:
+simulated match completes AUTH/ACCT/SETCRED0; missing/corrupt locker marker and
+mismatch reject. Extra launcher arguments/target IDs and root real UID reject.
+Display-manager regression and preceding-required-denial tests still pass.
+These fixture checks are dispatch tests, not biometric accuracy measurements.
+A real unprivileged `kde` password fallback test with detector unavailable
+completed AUTH/ACCT/SETCRED0 using masked account password. Detector/marker were
+restored; neither a password nor raw biometric data was saved. No desktop was
+locked/restarted during tests. SELinux remains enforcing without added policy.
+
+Updated module, launcher(mode4755), probe, manager and `activate-lock.sh` were
+installed. A real activation attempt as the ordinary user returned AUTH7 in its
+first strict scan; no production locker PAM change or new opt-in remained.
+Owner identity/presence in this agent-triggered scan is not established. Existing
+display-manager login remains enabled; locker activation still requires the
+owner to run `activate-lock.sh` facing the enrolled camera for both real scans.

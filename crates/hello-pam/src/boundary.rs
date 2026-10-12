@@ -8,6 +8,7 @@ use std::{
 };
 
 pub const HELPER: &str = "/usr/local/libexec/linux-hello-sudo/hello-sudo";
+pub const LOCK_HELPER: &str = "/usr/local/libexec/linux-hello-sudo/hello-lock-verify";
 pub const ROOT: &str = "/var/lib/linux-hello/sudo";
 pub const MODELS: &str = "/usr/local/libexec/linux-hello-sudo/models";
 

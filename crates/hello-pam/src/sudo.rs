@@ -42,6 +42,8 @@ fn permitted(service: &str, uid: u32, caller: u32) -> bool {
         // A root display-manager helper supplies the selected PAM_USER. There
         // is no logged-in caller and no PAM_RUSER to use before login.
         "plasmalogin" | "sddm" => caller == 0,
+        #[cfg(feature = "kde-pam")]
+        "kde" => caller == uid,
         _ => false,
     }
 }
@@ -52,8 +54,7 @@ fn diagnostic_allowed(service: &str, caller: u32, requested: bool) -> bool {
         && matches!(service, "plasmalogin" | "sddm")
 }
 fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()> {
-    // SAFETY: geteuid/getuid take no pointers.
-    if pamh.is_null() || unsafe { libc::geteuid() } != 0 {
+    if pamh.is_null() {
         return None;
     }
     let mut service = std::ptr::null();
@@ -88,6 +89,23 @@ fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()>
     }
     if !permitted(service, uid, caller) {
         return None;
+    }
+    // SAFETY: geteuid takes no pointers. Only the self-bound locker launcher
+    // accepts a non-root PAM caller; sudo/display-manager paths remain root.
+    if unsafe { libc::geteuid() } != 0 && service != "kde" {
+        return None;
+    }
+    if service == "kde" {
+        boundary::protected_file(Path::new(boundary::LOCK_HELPER), false, 10_000_000).ok()?;
+        let child = Command::new(boundary::LOCK_HELPER)
+            .env_clear()
+            .env("LANG", "C.UTF-8")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        return wait_helper(child, Duration::from_secs(25), Duration::from_secs(10));
     }
     #[cfg(feature = "kde-pam")]
     if matches!(service, "plasmalogin" | "sddm") {
@@ -369,12 +387,18 @@ mod tests {
             "plasmalogin-autologin",
             "sddm-greeter",
             "sddm-autologin",
-            "kde",
             "kde-fingerprint",
             "login",
             "sshd",
         ] {
             assert!(!permitted(service, 1000, 0));
         }
+    }
+    #[test]
+    fn locker_only_verifies_its_real_callers_account() {
+        assert_eq!(permitted("kde", 1000, 1000), cfg!(feature = "kde-pam"));
+        assert!(!permitted("kde", 1001, 1000));
+        assert!(!permitted("kde", 1000, 0));
+        assert!(!permitted("kde", 0, 0));
     }
 }

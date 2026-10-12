@@ -12,10 +12,12 @@ spec=importlib.util.spec_from_file_location('kde_manager',Path(__file__).with_na
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 def main():
-    if os.geteuid()!=0 or len(sys.argv)!=2: raise SystemExit('Usage: sudo test-password-fallback.py USER')
+    if os.geteuid()!=0 or len(sys.argv) not in (2,4): raise SystemExit('Usage: sudo test-password-fallback.py USER [--service kde]')
+    locker=len(sys.argv)==4 and sys.argv[2:]==['--service','kde']
+    if len(sys.argv)==4 and not locker: raise SystemExit('Only --service kde is supported')
     user=sys.argv[1];uid=pwd.getpwnam(user).pw_uid
     if uid<1000: raise SystemExit('Normal account required')
-    service=m.detect()
+    service='kde' if locker else m.detect()
     source=Path('/etc/pam.d')/service
     if not source.exists(): source=Path('/usr/lib/pam.d')/service
     m.sudo.protected(source)
@@ -33,14 +35,20 @@ def main():
     try:
         m.sudo.atomic_write(marker,b'linux-hello-login-v1\n',0o600)
         model.rename(pending)
-        with tempfile.TemporaryDirectory(prefix='kde-fallback-',dir=m.ROOT) as tmp:
+        with tempfile.TemporaryDirectory(prefix='kde-fallback-',dir='/run' if locker else m.ROOT) as tmp:
             conf=Path(tmp)
             m.snapshot_pam(conf)
             m.sudo.atomic_write(conf/service,content,0o600)
             m.sudo.atomic_write(conf/m.SUBSTACK,m.AUTH_STACK.encode(),0o600)
+            if locker:
+                conf.chmod(0o755)
+                for path in conf.iterdir(): path.chmod(0o644)
             subprocess.run(['/usr/sbin/restorecon','-R',tmp],check=True)
             print('Detector intentionally unavailable. Enter the original account password in the hidden PAM prompt.',flush=True)
-            subprocess.run(['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(m.BASE/'kde-pam-probe'),service,user,str(conf),'--password'],check=True,timeout=60)
+            command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(m.BASE/'kde-pam-probe'),service,user,str(conf),'--password']
+            if locker:
+                command=['/usr/bin/setpriv','--reuid',str(uid),'--regid',str(pwd.getpwnam(user).pw_gid),'--init-groups',str(m.BASE/'kde-pam-probe'),service,user,str(conf),'--password']
+            subprocess.run(command,check=True,timeout=60)
         print('PASS: real KDE password/account/setcred stack succeeds despite model failure. No desktop session opened.')
     finally:
         if pending.exists(): pending.rename(model)

@@ -8,6 +8,11 @@ license.workspace = true
 [lib]
 crate-type = ["rlib", "cdylib"]
 
+[[bin]]
+name = "hello-lock-verify"
+path = "src/lock_verify.rs"
+required-features = ["kde-pam"]
+
 [features]
 privileged = ["dep:libc"]
 sudo-pam = ["privileged"]

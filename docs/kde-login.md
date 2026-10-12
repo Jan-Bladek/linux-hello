@@ -11,7 +11,8 @@ This Fedora44 host uses Plasma Login Manager6.7.5, with vendor PAM defaults in
 `/usr/lib/pam.d/plasmalogin`. `/etc/pam.d/plasmalogin` is an administrator override;
 its absence does not mean the display manager lacks PAM configuration. The
 manager detects the active systemd display manager and refuses unrelated service
-names. Screen locking (`kde`, `kde-fingerprint`), greeter accounts, autologin,
+names. Screen locking (`kde`) has a separate explicit opt-in described below.
+Fingerprint locking (`kde-fingerprint`), greeter accounts, autologin,
 login/sshd/su and authselect's system-auth/password-auth are not enabled by this
 integration. The existing running desktop is never stopped/restarted by the
 installer or activation tool.
@@ -187,3 +188,50 @@ For a development regression of this dispatch (not of recognition), root can run
 `python3 packaging/kde/test-setcred.py jan`. Synthetic verifier exits and dummy
 state are bind-mounted only in a verified, recursively private mount namespace;
 production references/helpers/PAM and desktop sessions remain untouched.
+
+## Unlocking an existing session (Win + L)
+
+KScreenLocker6.7 runs its PAM worker as the logged-in user, using the `kde`
+service. It does not run the root display-manager verifier. See the upstream
+[PAM worker](https://github.com/KDE/kscreenlocker/blob/Plasma/6.7/greeter/pamauthenticator.cpp).
+The optional `hello-lock-verify` launcher is installed root-owned mode4755 on
+the ordinary system filesystem. It accepts no arguments or target identity:
+the kernel real UID must be a normal account, and its protected root-private
+`pam-kde.enabled` must contain the exact opt-in magic. It validates the fixed
+helper and profile paths, disables dumps, closes inherited descriptors above2,
+clears the environment and execs only `hello-sudo verify REAL_UID` from `/`.
+There is no enrollment, diagnostic, command or template export interface.
+The existing verifier retains camera/worker isolation and template binding.
+Real UID remains the caller's so PAM can cancel its own child. The launcher
+grants no privileged shell, OS command or passwordless sudo authority.
+
+After installing the updated module, launcher, probe and management scripts:
+
+```sh
+/usr/local/libexec/linux-hello-sudo/activate-lock.sh
+```
+
+This performs two real tests as the ordinary selected user, not root/xdm_t,
+before backing up and modifying only `/etc/pam.d/kde`. The test configuration
+under `/run` is root-owned and readable by that user; it contains PAM lines,
+not biometric keys/templates. Root biometric state stays private. The same
+substack arrangement preserves password fallback and all other original KDE
+PAM groups. Locker diagnostics do not expose root verifier output; only PAM
+stage status is reported. Display-manager opt-in remains independent.
+
+Press Win + L, show the unlock screen and face the camera. If authentication
+does not start automatically, submit the empty password field. A failed match
+continues to the original password prompt. No desktop is locked/restarted by
+the installer or activation tool. Status and rollback:
+
+```sh
+sudo /usr/local/libexec/linux-hello-sudo/manage-kde.py status --service kde --user jan
+sudo /usr/local/libexec/linux-hello-sudo/manage-kde.py disable --service kde --user jan
+```
+
+`test-setcred.py` also tests actual unprivileged locker PAM dispatch and the
+installed setuid launcher in its private mount namespace with simulated
+verifier exits: own-account success, missing/corrupt opt-in, and rejection.
+For a real password fallback check use
+`sudo python3 packaging/kde/test-password-fallback.py jan --service kde`.
+The presentation attack/NIR qualification limitations above also apply here.

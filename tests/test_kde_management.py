@@ -8,6 +8,13 @@ import subprocess
 spec=importlib.util.spec_from_file_location('kde_management',Path(__file__).parents[1]/'packaging/kde/manage-kde.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class KdeManagement(unittest.TestCase):
+    def test_locker_configuration_preserves_all_other_pam_groups(self):
+        original='auth        substack      password-auth\nauth include postlogin\naccount required pam_nologin.so\naccount include password-auth\npassword include password-auth\nsession required pam_selinux.so open\n'
+        updated=m.changed(original,True)
+        self.assertEqual(m.changed(updated,False),original)
+        self.assertEqual(updated.split('account required')[1],original.split('account required')[1])
+        self.assertIn('kde',m.MANAGED_SERVICES)
+        self.assertNotIn('kde-fingerprint',m.MANAGED_SERVICES)
     def test_diagnostics_only_change_the_isolated_test_stack(self):
         production=m.AUTH_STACK.encode()
         diagnostic=m.diagnostic_stack(production)

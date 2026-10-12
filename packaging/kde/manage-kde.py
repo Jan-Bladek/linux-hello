@@ -28,6 +28,7 @@ LINE = f'auth        substack      {SUBSTACK}\n'
 ORIGINAL = '# Linux Hello original password line: '
 AUTH_STACK = 'auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth substack password-auth\n'
 SERVICES = ('plasmalogin', 'sddm')
+MANAGED_SERVICES = SERVICES + ('kde',)
 
 class ActivationError(RuntimeError):
     """Expected, fail-closed live-test failure; no Python traceback needed."""
@@ -132,22 +133,32 @@ def snapshot_pam(conf):
             sudo.protected(resolved)
             sudo.atomic_write(conf/source.name,resolved.read_bytes(),0o600)
 
-def probe(user, content):
+def probe(user, content, service=None):
     driver = BASE / 'kde-pam-probe'
     sudo.protected(driver)
-    with tempfile.TemporaryDirectory(prefix='kde-pam-test-', dir=ROOT) as folder:
+    service = service or detect()
+    with tempfile.TemporaryDirectory(prefix='kde-pam-test-', dir='/run' if service=='kde' else ROOT) as folder:
         conf = Path(folder)
         snapshot_pam(conf)
-        service = detect()
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(driver),service,user,str(conf)]
+        if service=='kde':
+            import pwd
+            account=pwd.getpwnam(user)
+            # Locker PAM is unprivileged, unlike display-manager PAM. Only the
+            # non-biometric test configuration is public; state stays private.
+            conf.chmod(0o755)
+            command=['/usr/bin/setpriv','--reuid',str(account.pw_uid),'--regid',str(account.pw_gid),'--init-groups',str(driver),service,user,str(conf)]
+        mode=0o644 if service=='kde' else 0o600
         # First prove that this adapter itself matched, independently of any
         # pre-existing permit/other credential module in the vendor stack.
         strict='auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n'
-        sudo.atomic_write(conf / service, strict.encode(), 0o600)
+        sudo.atomic_write(conf / service, strict.encode(), mode)
+        if service=='kde':
+            for path in conf.iterdir(): path.chmod(0o644)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         run_probe(command,1)
-        sudo.atomic_write(conf / service, content, 0o600)
-        sudo.atomic_write(conf / SUBSTACK, diagnostic_stack(AUTH_STACK.encode()), 0o600)
+        sudo.atomic_write(conf / service, content, mode)
+        sudo.atomic_write(conf / SUBSTACK, diagnostic_stack(AUTH_STACK.encode()), mode)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         # Identical SELinux domain to the real Plasma/SDDM root helper. Probe
         # authenticates/checks account/credentials but opens no desktop session.
@@ -157,14 +168,14 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('action',choices=['enable','disable','status'])
     p.add_argument('--user',required=True)
-    p.add_argument('--service',choices=SERVICES)
+    p.add_argument('--service',choices=MANAGED_SERVICES)
     args=p.parse_args()
     if os.geteuid()!=0: p.error('Run with sudo')
     import pwd
     uid=pwd.getpwnam(args.user).pw_uid
     if uid<1000: p.error('Normal user account required')
     service=args.service or detect()
-    if args.action=='enable' and service!=detect(): raise RuntimeError('Service is not the active display manager')
+    if args.action=='enable' and service!='kde' and service!=detect(): raise RuntimeError('Service is not the active display manager')
     pam=Path('/etc/pam.d') / service
     vendor=Path('/usr/lib/pam.d') / service
     override=pam.exists() or pam.is_symlink()
@@ -197,7 +208,7 @@ def main():
         subprocess.run(['/usr/sbin/restorecon',str(marker)],check=True)
         try:
             print('Patrz prosto w kamere: testuje PAM i SELinux ekranu logowania.',flush=True)
-            probe(args.user,updated)
+            probe(args.user,updated,service)
         except BaseException:
             if not existed: marker.unlink(missing_ok=True)
             raise
