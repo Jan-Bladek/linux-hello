@@ -988,3 +988,36 @@ that owner test. No logout, desktop restart or physical greeter/session success
 is claimed yet. Existing sudo remains enabled. See docs/kde-login.md for exact
 activation, use, recovery and security limits. No PAD or representative NIR FAR/FRR
 has been qualified.
+
+## KDE PAM credential establishment fix — 2026-10-12
+
+Owner-provided activation trace demonstrated a genuine PAM_AUTHENTICATE=0 and
+PAM_ACCT_MGMT=0, followed by PAM_SETCRED=17 in the adapter-only probe. The previous
+pam_sm_setcred unconditionally returned PAM_IGNORE; once the successful face
+adapter was the selected auth module, that provided no successful credential
+handler and Linux-PAM returned PAM_CRED_ERR.
+
+The adapter now resets a private PAM-handle match marker before each authentication
+attempt and records it only after the real verifier succeeds. A no-op setcred
+returns success only for its own matched transaction; absent/reset/unrelated data
+returns ignore, preserving password-module credential handling. No extra OS
+credentials, password/AUTHTOK or biometric vectors are stored. Failure to reset
+or record PAM module data fails to the original password stack. No threshold,
+model, enrollment or PAM control flag was changed.
+
+PAM6 feature tests, default PAM test, Clippy, formatting, release and Python21
+passed. The updated module was installed root0644 and relabeled. Actual xdm_t
+missing/corrupt opt-in, root/unsupported services and fallback tests still passed.
+A mount-namespace-isolated regression test binds synthetic success/failure helper
+executables and a dummy private state ONLY inside a new recursively private mount
+namespace: successful simulated verifier -> actual PAM_AUTH/ACCT/SETCRED all0;
+rejected simulated verifier -> AUTH7. No production helper, reference, PAM file or
+OS session is changed; this measures dispatch, not biometric accuracy/owner match.
+The probe must execute from the ordinary installed root filesystem: /run's nosuid
+flag correctly rejects runcon domain transitions for a probe copied there.
+
+An agent-triggered owner activation retry returned AUTH7 (no live match), so login
+PAM remained inactive after that attempt. The owner's earlier genuine match is
+from the supplied trace; a fresh complete real owner/greeter login is not yet
+claimed. Existing sudo and password fallback remain in place. Re-run installed
+activate-kde.sh while facing the enrolled camera to finish live activation.

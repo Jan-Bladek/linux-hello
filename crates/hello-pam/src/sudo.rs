@@ -10,8 +10,18 @@ use std::{
 };
 const PAM_SUCCESS: c_int = 0;
 const PAM_IGNORE: c_int = 25;
+// Non-secret transaction marker. It contains no token, password or biometric.
+static MATCHED: u8 = 1;
+const MATCH_DATA: &CStr = c"linux-hello-face-matched-v1";
 #[link(name = "libpam.so.0", kind = "dylib", modifiers = "+verbatim")]
 unsafe extern "C" {
+    fn pam_set_data(
+        pamh: *mut c_void,
+        name: *const c_char,
+        data: *mut c_void,
+        cleanup: Option<unsafe extern "C" fn(*mut c_void, *mut c_void, c_int)>,
+    ) -> c_int;
+    fn pam_get_data(pamh: *const c_void, name: *const c_char, data: *mut *const c_void) -> c_int;
     fn pam_get_item(pamh: *const c_void, item: c_int, out: *mut *const c_void) -> c_int;
     fn pam_get_user(pamh: *mut c_void, out: *mut *const c_char, prompt: *const c_char) -> c_int;
     fn pam_prompt(
@@ -167,25 +177,77 @@ pub unsafe extern "C" fn pam_sm_authenticate(
     _argc: c_int,
     _argv: *const *const c_char,
 ) -> c_int {
-    match std::panic::catch_unwind(|| authenticate(pamh, flags & 0x8000 != 0)) {
+    match std::panic::catch_unwind(|| {
+        if pamh.is_null() {
+            return None;
+        }
+        // SAFETY: PAM supplies a live handle. Reset every attempt, including
+        // retries on the same handle, so a prior match cannot outlive a failure.
+        if unsafe { pam_set_data(pamh, MATCH_DATA.as_ptr(), std::ptr::null_mut(), None) }
+            != PAM_SUCCESS
+        {
+            return None;
+        }
+        authenticate(pamh, flags & 0x8000 != 0)?;
+        let marker = std::ptr::from_ref(&MATCHED).cast_mut().cast();
+        // SAFETY: marker points at immutable static storage, never dereferenced
+        // or freed by PAM. No cleanup is needed; the handle owns only its entry.
+        (unsafe { pam_set_data(pamh, MATCH_DATA.as_ptr(), marker, None) } == PAM_SUCCESS)
+            .then_some(())
+    }) {
         Ok(Some(())) => PAM_SUCCESS,
         _ => PAM_IGNORE,
     }
 }
 /// # Safety
-/// Called by PAM; this adapter does not create credentials or read AUTHTOK.
+/// Called with a live PAM handle; this adapter has no extra credentials to
+/// create. A no-op success follows only its own match on this transaction.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pam_sm_setcred(
-    _pamh: *mut c_void,
+    pamh: *mut c_void,
     _flags: c_int,
     _argc: c_int,
     _argv: *const *const c_char,
 ) -> c_int {
-    PAM_IGNORE
+    if pamh.is_null() {
+        return PAM_IGNORE;
+    }
+    let mut data = std::ptr::null();
+    // SAFETY: the PAM caller supplies the live handle and output is writable;
+    // data is only compared as an address, never dereferenced.
+    let status = unsafe { pam_get_data(pamh, MATCH_DATA.as_ptr(), &mut data) };
+    credential_status(status, data)
+}
+fn credential_status(status: c_int, data: *const c_void) -> c_int {
+    if status == PAM_SUCCESS && data == std::ptr::from_ref(&MATCHED).cast() {
+        PAM_SUCCESS
+    } else {
+        PAM_IGNORE
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn credentials_succeed_only_for_this_transactions_match() {
+        assert_eq!(
+            credential_status(PAM_SUCCESS, std::ptr::from_ref(&MATCHED).cast()),
+            PAM_SUCCESS
+        );
+        assert_eq!(credential_status(PAM_SUCCESS, std::ptr::null()), PAM_IGNORE);
+        let unrelated = 1_u8;
+        assert_eq!(
+            credential_status(PAM_SUCCESS, std::ptr::from_ref(&unrelated).cast()),
+            PAM_IGNORE
+        );
+        assert_eq!(
+            credential_status(18, std::ptr::from_ref(&MATCHED).cast()),
+            PAM_IGNORE
+        );
+        // SAFETY: null is explicitly checked by the export before calling PAM.
+        let status = unsafe { pam_sm_setcred(std::ptr::null_mut(), 2, 0, std::ptr::null()) };
+        assert_eq!(status, PAM_IGNORE);
+    }
     #[test]
     fn child_failure_and_timeouts_never_become_success() {
         let spawn = |program: &str, args: &[&str]| {

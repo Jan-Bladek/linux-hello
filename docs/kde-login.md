@@ -144,3 +144,12 @@ validated presentation attack detection or measured representative NIR FAR/FRR.
 The minimum0.80 threshold remains provisional. It must not be described as
 Windows Hello-equivalent protection. Model/frame acquisition diagnostics do not
 constitute validated anti-spoof evidence.
+
+The PAM adapter's credential callback is a no-op success only after its own
+verified match on the same PAM transaction. Every new authentication attempt
+clears that marker; failures cannot reuse an earlier match. Returning ignore
+unconditionally here caused PAM_CRED_ERR17 in the adapter-only activation probe.
+For a development regression of this dispatch (not of recognition), root can run
+`python3 packaging/kde/test-setcred.py jan`. Synthetic verifier exits and dummy
+state are bind-mounted only in a verified, recursively private mount namespace;
+production references/helpers/PAM and desktop sessions remain untouched.
