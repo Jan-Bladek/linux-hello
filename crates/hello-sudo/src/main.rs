@@ -109,7 +109,11 @@ async fn verify(uid: u32, cancel: Arc<AtomicBool>, diagnostic: bool) -> Result<(
                 capture.lock().await.next_sample().await
             }
         },
-        |_| {},
+        |progress| {
+            if diagnostic {
+                eprintln!("{}", serde_json::json!({"progress":progress.hint,"accepted_frames":progress.accepted,"required_frames":3}));
+            }
+        },
     )
     .await;
     let mut live = capture.lock().await;
@@ -117,7 +121,7 @@ async fn verify(uid: u32, cancel: Arc<AtomicBool>, diagnostic: bool) -> Result<(
     if diagnostic {
         eprintln!(
             "{}",
-            serde_json::json!({"capture":live.report(),"threshold":config.threshold,"similarity":result.as_ref().ok().map(|r|r.minimum()),"outcome":if result.as_ref().is_ok_and(|r|r.classify(RecognitionThreshold::new(config.threshold).expect("validated threshold"))==RecognitionDecision::Recognized) {"match"}else{"rejected"},"cleanup_ok":cleanup.is_ok(),"pad_validated":false})
+            serde_json::json!({"capture":live.report(),"threshold":config.threshold,"similarity":result.as_ref().ok().map(|r|r.minimum()),"failure_reason":result.as_ref().map(|r|r.failure_reason().map(str::to_owned)).unwrap_or_else(|error|Some(error.to_string())),"outcome":if cleanup.is_ok() && !cancel.load(Ordering::Acquire) && result.as_ref().is_ok_and(|r|r.classify(RecognitionThreshold::new(config.threshold).expect("validated threshold"))==RecognitionDecision::Recognized) {"match"}else{"rejected"},"cleanup_ok":cleanup.is_ok(),"pad_validated":false})
         );
     }
     cleanup?;

@@ -8,6 +8,8 @@ from pathlib import Path
 import stat
 import subprocess
 import tempfile
+import time
+import sys
 
 # The installed sibling is root-owned; never import management code from $PWD.
 import importlib.util
@@ -22,6 +24,55 @@ BASE = Path('/usr/local/libexec/linux-hello-sudo')
 MARKER = '# Linux Hello KDE login experimental integration\n'
 LINE = 'auth        [success=1 default=ignore] /usr/lib64/security/pam_linuxhello.so\n'
 SERVICES = ('plasmalogin', 'sddm')
+
+class ActivationError(RuntimeError):
+    """Expected, fail-closed live-test failure; no Python traceback needed."""
+
+def run_probe(command, stage):
+    print(f'Test {stage}/2. Patrz prosto, pokaz oba oczy; nie skrecaj glowy.', flush=True)
+    for remaining in (3, 2, 1):
+        print(f'Skanowanie za {remaining}...', flush=True)
+        time.sleep(1)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=40, env={'LANG':'C.UTF-8'})
+    except subprocess.TimeoutExpired as error:
+        raise ActivationError(f'Test {stage}/2: przekroczono czas weryfikacji. PAM logowania nie zostal zmieniony.') from error
+    report_probe(result.stdout + result.stderr)
+    if result.returncode:
+        raise ActivationError(f'Test {stage}/2 odrzucony. PAM logowania nie zostal zmieniony; haslo nadal dziala. Szczegoly powyzej.')
+
+def report_probe(output):
+    """Display bounded metadata from this exact PAM invocation, never biometrics."""
+    reasons = {
+        'landmark_shape_mismatch': 'geometria twarzy nie pasuje do wzorca',
+        'centroid_similarity_below_threshold': 'podobienstwo do sredniego wzorca jest za niskie',
+        'exemplar_similarity_below_threshold': 'podobienstwo do zapisanych ujec jest za niskie',
+    }
+    for line in output.splitlines():
+        if line.startswith('PAM_'):
+            print(line, flush=True)
+            continue
+        try:
+            data = json.loads(line)
+        except (ValueError, TypeError):
+            if line.startswith('Linux Hello: '): print(line[:1024], flush=True)
+            continue
+        if not isinstance(data, dict): continue
+        if 'progress' in data:
+            print(f"Ujecia {data.get('accepted_frames',0)}/3: {str(data['progress'])[:512]}", flush=True)
+        if 'outcome' not in data: continue
+        score, threshold = data.get('similarity'), data.get('threshold')
+        if isinstance(score, (int,float)) and isinstance(threshold, (int,float)):
+            print(f'Podobienstwo: {score:.3f}; wymagane: {threshold:.3f}.', flush=True)
+        reason = data.get('failure_reason')
+        if reason: print('Przyczyna: ' + reasons.get(str(reason), str(reason)[:1024]), flush=True)
+        if not data.get('cleanup_ok',False): print('Nie udalo sie bezpiecznie zamknac kamery; wynik odrzucony.', flush=True)
+
+def diagnostic_stack(content):
+    """Enable metadata only in the private root-owned test, never production PAM."""
+    text = content.decode('utf-8')
+    if text.count(LINE) != 1: raise RuntimeError('Missing unique Linux Hello test line')
+    return text.replace(LINE, LINE.rstrip('\n') + ' diagnostic\n', 1).encode()
 
 def changed(original, enable):
     if original.count(MARKER) != original.count(LINE) or original.count(MARKER) > 1:
@@ -67,15 +118,15 @@ def probe(user, content):
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(driver),service,user,str(conf)]
         # First prove that this adapter itself matched, independently of any
         # pre-existing permit/other credential module in the vendor stack.
-        strict='auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n'
+        strict='auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n'
         sudo.atomic_write(conf / service, strict.encode(), 0o600)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
-        subprocess.run(command,check=True,timeout=40,env={'LANG':'C.UTF-8'})
-        sudo.atomic_write(conf / service, content, 0o600)
+        run_probe(command,1)
+        sudo.atomic_write(conf / service, diagnostic_stack(content), 0o600)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         # Identical SELinux domain to the real Plasma/SDDM root helper. Probe
         # authenticates/checks account/credentials but opens no desktop session.
-        subprocess.run(command,check=True,timeout=40,env={'LANG':'C.UTF-8'})
+        run_probe(command,2)
 
 def main():
     p = argparse.ArgumentParser()
@@ -158,4 +209,8 @@ def main():
     print(f'{service}: {args.action}d for {args.user}; password/account/session/wallet hooks retained. Active session continues.')
 
 if __name__=='__main__':
-    main()
+    try:
+        main()
+    except (ActivationError, subprocess.CalledProcessError, RuntimeError, OSError) as error:
+        print(f'Linux Hello: {error}', file=sys.stderr)
+        sys.exit(1)

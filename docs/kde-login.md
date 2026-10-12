@@ -77,6 +77,19 @@ root state directory. A preimage check precedes atomic installation of the
 administrator override. Failed pre-activation verification leaves login PAM
 unchanged and removes a newly created opt-in marker.
 
+Activation labels each of the two scans and counts down three seconds before
+starting it. sudo authorization is a separate preceding step. Do not press Enter
+repeatedly while capture is running. Expected rejection/timeouts now produce a
+short error instead of a Python traceback. The private activation PAM stack uses
+the explicit `diagnostic` module option: the same root verifier reports progress,
+frame-quality hints, the score, active threshold and rejection reason from that
+exact invocation. These messages are displayed when the scan completes. No raw
+images or embeddings are logged. The option is restricted to root KDE login
+services; production PAM has no diagnostic option and retains suppressed helper
+output. Diagnostics never change matching, timeouts, credential checks or the
+requirement for three suitable matching frames. A rejected score is not evidence
+that lowering the provisional threshold would be safe.
+
 Immediately before `auth substack password-auth`, the tool inserts:
 
 ```pam

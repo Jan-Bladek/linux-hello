@@ -1021,3 +1021,32 @@ PAM remained inactive after that attempt. The owner's earlier genuine match is
 from the supplied trace; a fresh complete real owner/greeter login is not yet
 claimed. Existing sudo and password fallback remain in place. Re-run installed
 activate-kde.sh while facing the enrolled camera to finish live activation.
+
+### KDE activation diagnostics and readiness (2026-10-12)
+
+Confirmed that the credential-fix module was installed: source release and
+installed module SHA256 matched. A separate real xdm_t diagnostic captured one
+IR face and rejected similarity0.712827 against0.80; camera/worker cleanup passed.
+After installing this change, the actual strict activation PAM invocation reported
+similarity0.653 against0.800, `centroid_similarity_below_threshold`, and AUTH7.
+This distinguishes a real verifier rejection from the already corrected SETCRED17.
+The subject's identity/presence was not independently established; these are not
+labelled genuine/impostor accuracy measurements or FAR/FRR results. No threshold,
+model, camera preprocessing or reference was modified to force acceptance.
+
+Activation now separates sudo authorization from two labelled, three-second
+countdown tests. Only the root-private test stacks request explicit diagnostics;
+the installed production stack never receives that option. Diagnostics use the
+same verifier, exit-status and timeout checks and disclose metadata/progress and
+failure reasons, without embeddings/images. Cleanup/cancellation cannot be
+reported as a match. Expected rejection/timeout returns a concise error and
+removes the newly staged marker, with production login PAM unchanged.
+
+Checks passed: PAM7 optional +1 default, helper1, passive verification5,
+Python24, feature Clippy with warnings denied, formatting/release/shell syntax.
+Real xdm_t negative marker/service/account and fallback-dispatch tests passed.
+The private mount-namespace simulated-exit regression now covers both diagnostic
+and ordinary mode: both complete AUTH/ACCT/SETCRED0 only for success; both reject
+failure with AUTH7. These simulated tests are not biometric validation.
+The updated helper/module/activation scripts were installed. KDE remains disabled
+after the rejected real scan; sudo remains enabled and SELinux remains enforcing.

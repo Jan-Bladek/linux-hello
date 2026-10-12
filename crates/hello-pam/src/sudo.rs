@@ -45,7 +45,13 @@ fn permitted(service: &str, uid: u32, caller: u32) -> bool {
         _ => false,
     }
 }
-fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
+fn diagnostic_allowed(service: &str, caller: u32, requested: bool) -> bool {
+    cfg!(feature = "kde-pam")
+        && requested
+        && caller == 0
+        && matches!(service, "plasmalogin" | "sddm")
+}
+fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()> {
     // SAFETY: geteuid/getuid take no pointers.
     if pamh.is_null() || unsafe { libc::geteuid() } != 0 {
         return None;
@@ -125,13 +131,23 @@ fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
             )
         };
     }
+    // Explicit administrator PAM option, used only in the private activation
+    // test stack. Same verifier and exit-status checks; never an auth bypass.
+    let diagnostic = diagnostic_allowed(service, caller, diagnostic);
     let child = Command::new(boundary::HELPER)
-        .args(["verify", &uid.to_string()])
+        .args([
+            if diagnostic { "diagnose" } else { "verify" },
+            &uid.to_string(),
+        ])
         .env_clear()
         .env("LANG", "C.UTF-8")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(if diagnostic {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
         .spawn()
         .ok()?;
     wait_helper(child, Duration::from_secs(25), Duration::from_secs(10))
@@ -169,13 +185,14 @@ fn wait_helper(mut child: std::process::Child, timeout: Duration, grace: Duratio
     }
 }
 /// # Safety
-/// The PAM caller must supply a live PAM handle, as required by Linux-PAM.
+/// The PAM caller must supply a live handle and valid argc/argv module options,
+/// as required by Linux-PAM.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn pam_sm_authenticate(
     pamh: *mut c_void,
     flags: c_int,
-    _argc: c_int,
-    _argv: *const *const c_char,
+    argc: c_int,
+    argv: *const *const c_char,
 ) -> c_int {
     match std::panic::catch_unwind(|| {
         if pamh.is_null() {
@@ -188,7 +205,15 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         {
             return None;
         }
-        authenticate(pamh, flags & 0x8000 != 0)?;
+        let diagnostic = if argc == 1 && !argv.is_null() {
+            // SAFETY: PAM supplies argc valid pointers to terminated options.
+            let option = unsafe { *argv };
+            // SAFETY: non-null option is a terminated string provided by PAM.
+            !option.is_null() && unsafe { CStr::from_ptr(option) } == c"diagnostic"
+        } else {
+            false
+        };
+        authenticate(pamh, flags & 0x8000 != 0, diagnostic)?;
         let marker = std::ptr::from_ref(&MATCHED).cast_mut().cast();
         // SAFETY: marker points at immutable static storage, never dereferenced
         // or freed by PAM. No cleanup is needed; the handle owns only its entry.
@@ -308,6 +333,20 @@ mod tests {
         assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
     }
     #[test]
+    fn diagnostics_are_only_for_explicit_root_login_tests() {
+        for service in ["plasmalogin", "sddm"] {
+            assert_eq!(
+                diagnostic_allowed(service, 0, true),
+                cfg!(feature = "kde-pam")
+            );
+            assert!(!diagnostic_allowed(service, 0, false));
+            assert!(!diagnostic_allowed(service, 1000, true));
+        }
+        for service in ["sudo", "sudo-i", "kde", "plasmalogin-autologin", "sshd"] {
+            assert!(!diagnostic_allowed(service, 0, true));
+        }
+    }
+    #[test]
     fn restricts_service_and_claimed_identity() {
         assert!(permitted("sudo", 1000, 1000));
         assert!(permitted("sudo-i", 1000, 1000));
@@ -316,7 +355,7 @@ mod tests {
         }
         assert!(!permitted("sudo", 0, 0));
         assert!(!permitted("sudo", 1001, 1000));
-        assert!(authenticate(std::ptr::null_mut(), true).is_none());
+        assert!(authenticate(std::ptr::null_mut(), true, false).is_none());
     }
     #[test]
     fn graphical_login_requires_a_root_greeter_and_normal_claimed_account() {

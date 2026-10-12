@@ -670,6 +670,9 @@ pub struct ComparisonSummary {
 }
 
 impl ComparisonSummary {
+    pub fn failure_reason(&self) -> Option<&'static str> {
+        self.failure_reason
+    }
     pub fn minimum(&self) -> f32 {
         self.cosine_min
     }

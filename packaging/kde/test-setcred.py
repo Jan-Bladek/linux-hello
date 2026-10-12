@@ -34,7 +34,7 @@ def main():
         conf=tmp/'conf';conf.mkdir()
         (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
         fixture=tmp/'fixture.c'
-        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==3&&!strcmp(v[1],"verify")&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
+        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==3&&(!strcmp(v[1],"verify")||!strcmp(v[1],"diagnose"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
         good=tmp/'matched';bad=tmp/'rejected'
         for file,exitcode in [(good,0),(bad,1)]:
             subprocess.run(['/usr/bin/cc','-Wall','-Wextra','-Werror','-O2',f'-DOUTCOME={exitcode}',f'-DEXPECTED_UID="{uid}"','-o',str(file),str(fixture)],check=True)
@@ -53,9 +53,13 @@ def main():
         try:
             subprocess.run(['/usr/bin/mount','--bind',str(good),str(BASE/'hello-sudo')],check=True)
             assert subprocess.run(command,timeout=10).returncode==0,'successful verifier must complete auth/account/setcred'
+            (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n')
+            assert subprocess.run(command,timeout=10).returncode==0,'diagnostics must preserve auth/account/setcred'
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/mount','--bind',str(bad),str(BASE/'hello-sudo')],check=True)
             assert subprocess.run(command,timeout=10).returncode!=0,'rejected verifier must not authenticate'
+            (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
+            assert subprocess.run(command,timeout=10).returncode!=0,'normal rejection must not authenticate either'
         finally:
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/umount',str(ROOT)],check=True)
