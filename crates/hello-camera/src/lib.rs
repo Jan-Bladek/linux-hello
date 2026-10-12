@@ -21,6 +21,9 @@ use zeroize::Zeroize;
 #[cfg(target_os = "linux")]
 mod linux;
 
+mod emitter;
+pub use emitter::IrEmitterLease;
+
 const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 #[cfg(any(target_os = "linux", test))]
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -149,6 +152,40 @@ pub struct DeviceInfo {
     pub capture_supported: bool,
     /// Per-device errors remain visible rather than hiding inaccessible devices.
     pub diagnostic: Option<String>,
+}
+
+/// Read-only V4L2 control inventory; it never sets controls or enables an emitter.
+#[derive(Clone, Debug, Serialize)]
+pub struct ControlInfo {
+    pub id: u32,
+    pub name: String,
+    pub control_type: u32,
+    pub minimum: i32,
+    pub maximum: i32,
+    pub step: i32,
+    pub default_value: i32,
+    pub flags: u32,
+    pub current_value: Option<i32>,
+    pub diagnostic: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ControlReport {
+    pub controls: Vec<ControlInfo>,
+    pub enumeration_complete: bool,
+    pub diagnostic: Option<String>,
+}
+
+pub fn controls(path: &std::path::Path) -> Result<ControlReport, CameraError> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::controls(path)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = path;
+        Err(CameraError::UnsupportedPlatform)
+    }
 }
 
 #[derive(Clone, Debug)]

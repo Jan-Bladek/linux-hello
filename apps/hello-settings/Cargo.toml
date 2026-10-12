@@ -6,6 +6,9 @@ rust-version.workspace = true
 license = "GPL-3.0-only"
 build = "build.rs"
 
+[features]
+face-diagnostics = ["dep:hello-cli", "hello-cli/face-opencv", "dep:zeroize"]
+
 [dependencies]
 slint.workspace = true
 hello-camera.workspace = true
@@ -14,6 +17,8 @@ hello-ipc.workspace = true
 hello-fingerprint.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
+zeroize = { workspace = true, optional = true }
+hello-cli = { path = "../../crates/hello-cli", version = "=0.1.0-dev", optional = true }
 
 [build-dependencies]
 slint-build.workspace = true

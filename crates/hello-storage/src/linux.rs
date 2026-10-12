@@ -32,41 +32,52 @@ impl SecureStore {
         if effective_uid != 0 && owner_uid != effective_uid {
             return Err(StorageError::OwnerMismatch);
         }
-        if !path.is_absolute() {
-            return Err(StorageError::InsecurePath);
-        }
-        let mut directory = open_at(
-            libc::AT_FDCWD,
-            c"/",
-            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            0,
-        )?;
-        for component in path.components() {
-            match component {
-                Component::RootDir => {}
-                Component::Normal(name) => {
-                    let name =
-                        CString::new(name.as_bytes()).map_err(|_| StorageError::InsecurePath)?;
-                    directory = open_at(
-                        directory.as_raw_fd(),
-                        &name,
-                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-                        0,
-                    )?;
-                }
-                _ => return Err(StorageError::InsecurePath),
-            }
-        }
-        let metadata = File::from(directory.try_clone()?).metadata()?;
-        if !metadata.is_dir() || metadata.uid() != effective_uid || metadata.mode() & 0o077 != 0 {
-            return Err(StorageError::InsecurePath);
-        }
+        let directory = open_directory(path, false, effective_uid)?;
         Ok(Self {
             directory,
             owner_uid,
             effective_uid,
             key,
         })
+    }
+
+    /// Explicit user-local passphrase storage. The salt is public, never a key.
+    /// Holds an exclusive advisory lock across read/verify/save/delete operations.
+    pub fn open_passphrase(
+        path: &Path,
+        password: &[u8],
+        create: bool,
+    ) -> Result<Self, StorageError> {
+        if !(12..=1024).contains(&password.len()) {
+            return Err(StorageError::InvalidPassphrase);
+        }
+        // SAFETY: geteuid takes no pointers and has no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let directory = open_directory(path, create, uid)?;
+        lock_directory(&directory)?;
+        let salt = read_or_create_salt(&directory, uid, create)?;
+        let key = super::passphrase_key(password, &salt)?;
+        Ok(Self {
+            directory,
+            owner_uid: uid,
+            effective_uid: uid,
+            key,
+        })
+    }
+
+    /// Deletes the current user's diagnostic reference without needing its key.
+    pub fn remove_local_reference(path: &Path) -> Result<bool, StorageError> {
+        // SAFETY: geteuid takes no pointers and has no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let store = match Self::open(path, uid, SecretKey::from_bytes([0; 32])) {
+            Ok(store) => store,
+            Err(StorageError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        };
+        lock_directory(&store.directory)?;
+        store.remove()
     }
 
     pub fn save(&self, template: &Template) -> Result<(), StorageError> {
@@ -160,6 +171,122 @@ impl SecureStore {
     }
 }
 
+fn lock_directory(directory: &OwnedFd) -> Result<(), StorageError> {
+    // SAFETY: flock operates on a live owned descriptor, without pointers.
+    if unsafe { libc::flock(directory.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(())
+}
+
+fn open_directory(path: &Path, create: bool, uid: u32) -> Result<OwnedFd, StorageError> {
+    if !path.is_absolute()
+        || path.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::CurDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(StorageError::InsecurePath);
+    }
+    let mut directory = open_at(
+        libc::AT_FDCWD,
+        c"/",
+        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        0,
+    )?;
+    for component in path.components() {
+        match component {
+            Component::RootDir => {}
+            Component::Normal(name) => {
+                let name = CString::new(name.as_bytes()).map_err(|_| StorageError::InsecurePath)?;
+                if create {
+                    // SAFETY: live directory descriptor and NUL-terminated basename.
+                    let result =
+                        unsafe { libc::mkdirat(directory.as_raw_fd(), name.as_ptr(), 0o700) };
+                    if result != 0 {
+                        let error = std::io::Error::last_os_error();
+                        if error.kind() != std::io::ErrorKind::AlreadyExists {
+                            return Err(error.into());
+                        }
+                    }
+                }
+                directory = open_at(
+                    directory.as_raw_fd(),
+                    &name,
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                    0,
+                )?;
+            }
+            _ => return Err(StorageError::InsecurePath),
+        }
+    }
+    let metadata = File::from(directory.try_clone()?).metadata()?;
+    if !metadata.is_dir() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
+        return Err(StorageError::InsecurePath);
+    }
+    Ok(directory)
+}
+
+fn read_or_create_salt(
+    directory: &OwnedFd,
+    uid: u32,
+    create: bool,
+) -> Result<[u8; 16], StorageError> {
+    const SALT: &CStr = c"passphrase.salt";
+    let flags = libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK;
+    let descriptor = match open_at(directory.as_raw_fd(), SALT, flags, 0) {
+        Ok(fd) => fd,
+        Err(StorageError::Io(error)) if create && error.kind() == std::io::ErrorKind::NotFound => {
+            // Never replace or invent salt for a pre-existing encrypted reference.
+            match open_at(directory.as_raw_fd(), TEMPLATE, flags, 0) {
+                Err(StorageError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+                _ => return Err(StorageError::InvalidEnvelope),
+            }
+            let mut salt = [0u8; 16];
+            getrandom::fill(&mut salt).map_err(|_| StorageError::RandomUnavailable)?;
+            let fd = open_at(
+                directory.as_raw_fd(),
+                SALT,
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                0o600,
+            )?;
+            let mut pending = Pending {
+                directory: directory.as_raw_fd(),
+                name: SALT,
+                remove: true,
+            };
+            let mut file = File::from(fd);
+            file.write_all(b"LHSALT01")?;
+            file.write_all(&salt)?;
+            file.sync_all()?;
+            sync_directory(directory)?;
+            pending.remove = false;
+            return Ok(salt);
+        }
+        Err(error) => return Err(error),
+    };
+    let file = File::from(descriptor);
+    let metadata = file.metadata()?;
+    if !metadata.is_file()
+        || metadata.uid() != uid
+        || metadata.mode() & 0o077 != 0
+        || metadata.nlink() != 1
+        || metadata.len() != 24
+    {
+        return Err(StorageError::InsecurePath);
+    }
+    let mut bytes = Vec::with_capacity(25);
+    file.take(25).read_to_end(&mut bytes)?;
+    if bytes.len() != 24 || &bytes[..8] != b"LHSALT01" {
+        return Err(StorageError::InvalidEnvelope);
+    }
+    let mut salt = [0; 16];
+    salt.copy_from_slice(&bytes[8..24]);
+    Ok(salt)
+}
+
 fn open_at(
     directory: RawFd,
     path: &CStr,
@@ -210,6 +337,86 @@ mod tests {
         let store =
             SecureStore::open(directory.path(), uid, SecretKey::from_bytes([7; 32])).unwrap();
         (directory, store)
+    }
+
+    #[test]
+    fn passphrase_reference_survives_reopening_and_remains_encrypted() {
+        let parent = tempfile::tempdir().unwrap();
+        let path = parent.path().join("private/nested");
+        let password = b"test reference phrase";
+        let store = SecureStore::open_passphrase(&path, password, true).unwrap();
+        assert!(store.load().unwrap().is_none());
+        let template = crate::tests::template().bind_capture([8; 32]).unwrap();
+        store.save(&template).unwrap();
+        let plaintext = template.to_bytes().unwrap();
+        let encrypted = std::fs::read(path.join("template.lht")).unwrap();
+        assert!(
+            !encrypted
+                .windows(plaintext.len())
+                .any(|w| w == plaintext.as_slice())
+        );
+        for name in ["template.lht", "passphrase.salt"] {
+            assert_eq!(
+                std::fs::metadata(path.join(name)).unwrap().mode() & 0o777,
+                0o600
+            );
+        }
+        assert_eq!(std::fs::metadata(&path).unwrap().mode() & 0o777, 0o700);
+        assert!(
+            SecureStore::open_passphrase(&path, password, false).is_err(),
+            "exclusive operation lock"
+        );
+        drop(store);
+        let wrong =
+            SecureStore::open_passphrase(&path, b"different reference phrase", false).unwrap();
+        assert!(matches!(wrong.load(), Err(StorageError::InvalidEnvelope)));
+        drop(wrong);
+        let reopened = SecureStore::open_passphrase(&path, password, false).unwrap();
+        let loaded = reopened.load().unwrap().unwrap();
+        assert_eq!(loaded.sample_count(), 3);
+        assert_eq!(loaded.capture_binding(), Some([8; 32]));
+        drop(reopened);
+        assert!(SecureStore::remove_local_reference(&path).unwrap());
+        assert!(!SecureStore::remove_local_reference(&path).unwrap());
+    }
+
+    #[test]
+    fn missing_malformed_or_linked_salt_never_rekeys_existing_data() {
+        let (directory, store) = setup();
+        store.save(&crate::tests::template()).unwrap();
+        let path = directory.path();
+        let original = std::fs::read(path.join("template.lht")).unwrap();
+        assert!(matches!(
+            SecureStore::open_passphrase(path, b"test reference phrase", true),
+            Err(StorageError::InvalidEnvelope)
+        ));
+        let salt = path.join("passphrase.salt");
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        symlink(outside.path(), &salt).unwrap();
+        assert!(SecureStore::open_passphrase(path, b"test reference phrase", true).is_err());
+        std::fs::remove_file(&salt).unwrap();
+        std::fs::write(&salt, b"malformed").unwrap();
+        assert!(SecureStore::open_passphrase(path, b"test reference phrase", true).is_err());
+        assert_eq!(std::fs::read(path.join("template.lht")).unwrap(), original);
+        assert_eq!(std::fs::metadata(outside.path()).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn short_passphrase_and_alias_creation_fail_before_writes() {
+        let parent = tempfile::tempdir().unwrap();
+        let path = parent.path().join("new");
+        assert!(matches!(
+            SecureStore::open_passphrase(&path, b"short", true),
+            Err(StorageError::InvalidPassphrase)
+        ));
+        assert!(!path.exists());
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), &path).unwrap();
+        assert!(
+            SecureStore::open_passphrase(&path.join("nested"), b"test reference phrase", true)
+                .is_err()
+        );
+        assert!(!outside.path().join("nested").exists());
     }
 
     #[test]

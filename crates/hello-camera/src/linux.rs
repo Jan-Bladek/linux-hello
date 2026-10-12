@@ -65,7 +65,7 @@ fn valid_path(path: &Path) -> bool {
             .is_some_and(|suffix| !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()))
 }
 
-fn open_device(path: &Path) -> Result<File, CameraError> {
+pub(super) fn open_device(path: &Path) -> Result<File, CameraError> {
     if !valid_path(path) {
         return Err(CameraError::InvalidRequest(
             "select an enumerated /dev/videoN node",
@@ -83,6 +83,66 @@ fn open_device(path: &Path) -> Result<File, CameraError> {
         ));
     }
     Ok(file)
+}
+
+pub(super) fn controls(path: &Path) -> Result<crate::ControlReport, CameraError> {
+    let file = open_device(path)?;
+    let mut controls = Vec::new();
+    let mut previous = 0_u32;
+    for _ in 0..128 {
+        let mut query = zeroed!(v4l2_queryctrl);
+        query.id = previous | V4L2_CTRL_FLAG_NEXT_CTRL;
+        if let Err(error) = ioctl!(&file, VIDIOC_QUERYCTRL, &mut query) {
+            return Ok(crate::ControlReport {
+                controls,
+                enumeration_complete: error.raw_os_error() == Some(libc::EINVAL),
+                diagnostic: if error.raw_os_error() == Some(libc::EINVAL) {
+                    None
+                } else {
+                    Some(error.to_string())
+                },
+            });
+        }
+        if query.id <= previous {
+            return Err(CameraError::InvalidFrame(
+                "control enumeration did not advance",
+            ));
+        }
+        previous = query.id;
+        let mut value = zeroed!(v4l2_control);
+        value.id = query.id;
+        // Simple integer/menu/boolean controls only. Compound, string and button
+        // types require different UAPI arguments and are deliberately not queried.
+        let scalar = [
+            v4l2_ctrl_type_V4L2_CTRL_TYPE_INTEGER,
+            v4l2_ctrl_type_V4L2_CTRL_TYPE_BOOLEAN,
+            v4l2_ctrl_type_V4L2_CTRL_TYPE_MENU,
+            v4l2_ctrl_type_V4L2_CTRL_TYPE_INTEGER_MENU,
+        ]
+        .contains(&query.type_);
+        let result = if scalar && query.flags & V4L2_CTRL_FLAG_DISABLED == 0 {
+            ioctl!(&file, VIDIOC_G_CTRL, &mut value)
+        } else {
+            Err(io::Error::from_raw_os_error(libc::ENOTSUP))
+        };
+        controls.push(crate::ControlInfo {
+            id: query.id,
+            name: text(&query.name),
+            control_type: query.type_,
+            minimum: query.minimum,
+            maximum: query.maximum,
+            step: query.step,
+            default_value: query.default_value,
+            flags: query.flags,
+            current_value: result.as_ref().ok().map(|_| value.value),
+            diagnostic: result.err().map(|e| e.to_string()),
+        });
+    }
+    Ok(crate::ControlReport {
+        controls,
+        enumeration_complete: false,
+        diagnostic: Some("control enumeration reached its 128-entry cap".into()),
+    })
 }
 
 pub(super) fn enumerate() -> Result<Vec<DeviceInfo>, CameraError> {
@@ -124,7 +184,7 @@ pub(super) fn enumerate() -> Result<Vec<DeviceInfo>, CameraError> {
         .collect())
 }
 
-fn describe(file: &File, path: &Path) -> Result<DeviceInfo, CameraError> {
+pub(super) fn describe(file: &File, path: &Path) -> Result<DeviceInfo, CameraError> {
     let mut caps = zeroed!(v4l2_capability);
     ioctl!(file, VIDIOC_QUERYCAP, &mut caps).map_err(io_error)?;
     let flags = if caps.capabilities & V4L2_CAP_DEVICE_CAPS != 0 {

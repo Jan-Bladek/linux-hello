@@ -36,6 +36,8 @@ jobs:
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Formatting
         run: cargo fmt --all --check
+      - name: Qualification recorder boundaries
+        run: python3 -B -m unittest discover -s tests -p 'test_*.py'
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit tests
@@ -54,6 +56,27 @@ jobs:
           sudo install -D -m 0755 target/release/hello-daemon /usr/libexec/hello-daemon
           systemd-analyze verify packaging/systemd/linux-hello.service
           bash -n packaging/fedora/prepare-source.sh
+
+  face-diagnostics:
+    name: Optional CPU adapter on Fedora
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 30
+    steps:
+      - name: Install native build libraries
+        run: dnf install -y --setopt=install_weak_deps=False gcc-c++ clang-devel opencv-devel pkgconf-pkg-config dbus-daemon git curl-minimal openssl-devel fontconfig-devel freetype-devel libxkbcommon-devel wayland-devel
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain 1.99.0 --component clippy
+      - name: Optional adapter checks (no weights or camera)
+        run: |
+          . "$HOME/.cargo/env"
+          cargo test --locked -p hello-face -p hello-cli -p hello-settings --features hello-settings/face-diagnostics
+          cargo clippy --locked -p hello-face -p hello-cli -p hello-settings --all-targets --features hello-settings/face-diagnostics -- -D warnings
 
   portable:
     name: Portable security libraries

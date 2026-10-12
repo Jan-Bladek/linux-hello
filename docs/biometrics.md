@@ -2,14 +2,35 @@
 
 This development build contains real local matching, multi-sample template construction,
 image quality statistics, authenticated encryption, and Linux secure file operations.
-It does **not** contain an operational face detector, alignment implementation, ONNX
-inference adapter, or presentation attack detector. CLI/GUI face enrollment therefore
-cannot complete. No model weights are downloaded during build or execution.
+An optional CPU YuNet/SFace adapter now performs detection, alignment and ONNX
+inference for local diagnostics; see [its contract and reproduction steps](inference.md).
+It does **not** contain evaluated recognition, a presentation attack detector or trusted
+enrollment. Trusted enrollment for system login therefore cannot complete. Model weights are
+fetched only by an explicit utility command, never during application execution or build.
 
-`FaceEngine` separates detection, alignment, and embedding extraction. The only shipped
+`FaceEngine` separates detection, alignment, and embedding extraction. The default
 engine is `UnconfiguredEngine`, which returns `Unsupported` for every operation.
-Synthetic embeddings and successful diagnostic evidence occur in unit tests only.
+The optional OpenCV adapter supplies functional diagnostic inference in a restricted
+worker. Synthetic embeddings exercise unit tests; explicit public fixtures and local
+camera probes supply functional checks, without authentication credentials.
 The public mathematical matcher cannot issue an authentication credential.
+
+`extract_embedding` now coordinates these steps for a configured diagnostic adapter.
+It validates the source frame, model specification and image quality before calling
+the detector; requires exactly one face; checks finite in-frame bounds/landmarks and
+a caller-supplied confidence threshold; validates the aligned tensor's exact shape,
+element count and finite values before inference; and rejects embeddings whose model
+digest or dimension differs from the declared specification. Every failed boundary
+stops the subsequent operation. `UnconfiguredEngine` remains unavailable through this
+entry point.
+
+Adapters implement `model_spec()` with the recognizer artifact digest, fixed input
+shape and output dimension; `model_digest()` derives its answer from that specification.
+Inputs allow 16–1024 pixels per side and one or three channels; embeddings allow
+1–2048 elements. Detection bounds use source-pixel `[x, y, width, height]` and must
+fit inside the frame. Landmark ordering, normalization and channel order still require
+the adapter's documented model contract. This coordinator implements no alignment
+transform, ONNX inference, model-file verification, trusted acquisition or PAD.
 
 ## Model research, checked 2026-10-10
 
@@ -27,8 +48,9 @@ Sources: [YuNet upstream README](https://raw.githubusercontent.com/opencv/opencv
 [InsightFace model licensing](https://github.com/deepinsight/insightface/blob/master/python-package/docs/model_zoo.md).
 
 Upstream benchmark results are not a measured false acceptance rate for this laptop,
-IR images, or Linux authentication. We have not measured accuracy, latency, peak RSS,
-demographic performance, or physical attack resistance. Published RGB results do not
+IR images, or Linux authentication. Small public-fixture latency/RSS measurements
+are recorded in [model evaluation](model-evaluation.md). We have not measured biometric
+accuracy, demographic performance or physical attack resistance. Published RGB results do not
 establish suitability for the Yoga Slim 7 infrared stream.
 
 The latest documented Rust `ort` API was `2.0.0-rc.13` at inspection. It is a release
@@ -92,8 +114,9 @@ entry is removed on ordinary failure. Reads use `O_NOFOLLOW|O_NONBLOCK`, then va
 the opened descriptor is an owned private regular file with exactly one hard link and
 a bounded size. Symlink swaps cannot redirect these descriptor-relative operations.
 Multiple writers use atomic replacement; caller coordination determines which
-successful save is latest. No lock attempts to make independent save/delete requests
-a larger transaction. Filesystem failure after rename can report an error after the
+successful save is latest in the generic external-key API. The optional GUI
+passphrase workflow holds an exclusive advisory directory lock across its
+read/verify/save/delete operation. Filesystem failure after rename can report an error after the
 new entry has become visible; callers must re-read status before retrying.
 
 Deletion unlinks the current entry and fsyncs the directory. It cannot guarantee
@@ -101,9 +124,12 @@ erasure from SSD remapping, journal history, snapshots, or backups. Encryption d
 not prevent rollback of an older authentic template under the same key. Revocation
 across backups needs per-enrollment key rotation plus a trusted generation counter.
 
-Keys are supplied in memory; there is intentionally no insecure convenience key file,
-embedded key, user-password derivation, or daemon key provisioning in this build.
-Storage readiness remains false until a reviewed provisioning path exists. Windows
+The generic API receives keys in memory. Optional GUI diagnostic persistence
+derives a key from a separate user-entered reference passphrase using Argon2id;
+there is no plaintext key file, embedded key or daemon/TPM provisioning. See
+[inference diagnostics](inference.md#multi-sample-encrypted-diagnostic-reference)
+for format, parameters and limitations. Trusted storage readiness remains false
+until a reviewed privileged provisioning path exists. Windows
 supports only portable cryptographic envelope tests, not filesystem persistence.
 Zeroization reduces residual memory; it does not provide locked pages, swap exclusion,
 or protection against a compromised process/root. Set service core dump limits and
@@ -133,3 +159,14 @@ authentication or TPM storage is implemented or advertised.
 
 The present tests exercise algorithms and failure handling using synthetic values;
 they are not evidence of biometric accuracy or physical attack resistance.
+
+
+## Accuracy refactor — 2026-10-12
+
+New native diagnostic enrollment uses version2 templates and three frontal
+anchors before pose variation; old full version1 references retain their scoring.
+See [the current component audit and limits](accuracy-improvements.md). Protected
+storage, account access rules, model binding and privileged authentication gates
+are unchanged. Face processing is local. Pose-conditioned matching, grayscale
+conversion and ordinary movement checks do not establish PAD. No representative
+NIR population error rates or production authentication readiness are claimed.

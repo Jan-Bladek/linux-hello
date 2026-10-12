@@ -5,7 +5,8 @@ Exact direct version pins and API references are listed in the
 `rust-toolchain.toml` pins Rust 1.99.0; `Cargo.lock` records the resolved versions
 and registry checksums. Build and test with `--locked`.
 
-Audit snapshot: 2026-10-10, `cargo-audit` 0.22.2, committed lockfile, RustSec
+Audit snapshot: 2026-10-10, repeated on native Fedora 2026-10-11 with the same
+result; `cargo-audit` 0.22.2, committed lockfile, RustSec
 database commit `7eebec69c352c7191b1f13eb95dd510eeca5d1de` (updated 2026-10-09).
 The run checked 600 lockfile dependencies and reported **zero known vulnerability
 entries and two maintenance advisories**. This is not a clean strict audit or a
@@ -50,3 +51,17 @@ The shared code's Apache-2.0 license and the GUI's GPL-3.0-only license are
 intentional. No face model, ONNX Runtime binary or model-training dataset is
 bundled. Any future model/runtime addition requires separate provenance, license,
 telemetry and resource-isolation review; see [research](research.md).
+
+## Optional OpenCV adapter (2026-10-11)
+
+The exact optional Rust binding is `opencv` 0.101.1 (MIT), with default features
+disabled and `clang-runtime`, `dnn`, `objdetect`, and `imgproc` enabled. The native
+Fedora library tested was OpenCV 4.13.0. Its system-library dependencies are not
+covered by Cargo audit. Model pins, upstream notices and unresolved dataset
+provenance are recorded in [inference diagnostics](inference.md). The lockfile
+has changed; the 600-dependency audit count above describes the previous graph.
+
+The expanded 609-dependency lockfile was audited on 2026-10-11: zero known
+vulnerability entries and the same two unmaintained advisories. Strict audit
+still fails; `cargo deny --locked check licenses sources bans` passes with warnings.
+No suppressions were introduced.

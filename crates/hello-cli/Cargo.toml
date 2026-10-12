@@ -1,5 +1,6 @@
 [package]
 name = "hello-cli"
+default-run = "hello"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +10,21 @@ license.workspace = true
 name = "hello"
 path = "src/main.rs"
 
+[[bin]]
+name = "hello-face-worker"
+path = "src/face_worker_main.rs"
+required-features = ["face-opencv"]
+
+[features]
+face-opencv = ["dep:hello-face", "hello-face/opencv", "dep:zeroize", "dep:libc", "dep:sha2", "dep:hello-storage"]
+
 [dependencies]
 hello-camera.workspace = true
+hello-storage = { workspace = true, optional = true }
+hello-face = { workspace = true, optional = true }
+zeroize = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 hello-core.workspace = true
 hello-ipc.workspace = true
 hello-fingerprint.workspace = true
@@ -19,6 +33,9 @@ clap.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "dataset_id": "REPLACE-WITH-DATASET-ID",
+  "consent_record": "REPLACE-WITH-CONSENT-RECORD",
+  "license_record": "REPLACE-WITH-LICENSE-RECORD",
+  "sensor_mode": "rgb",
+  "conditions": "REPLACE-WITH-LIGHTING-POSE-GLASSES-AND-SESSION-CONDITIONS",
+  "samples": [
+    {
+      "id": "cal-a-day-1",
+      "identity": "cal-a",
+      "session": "day-1",
+      "split": "calibration",
+      "path": "images/cal-a-day-1.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "cal-a-day-2",
+      "identity": "cal-a",
+      "session": "day-2",
+      "split": "calibration",
+      "path": "images/cal-a-day-2.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "cal-b-day-1",
+      "identity": "cal-b",
+      "session": "day-1",
+      "split": "calibration",
+      "path": "images/cal-b-day-1.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "cal-b-day-2",
+      "identity": "cal-b",
+      "session": "day-2",
+      "split": "calibration",
+      "path": "images/cal-b-day-2.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "eval-c-day-1",
+      "identity": "eval-c",
+      "session": "day-1",
+      "split": "evaluation",
+      "path": "images/eval-c-day-1.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "eval-c-day-2",
+      "identity": "eval-c",
+      "session": "day-2",
+      "split": "evaluation",
+      "path": "images/eval-c-day-2.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "eval-d-day-1",
+      "identity": "eval-d",
+      "session": "day-1",
+      "split": "evaluation",
+      "path": "images/eval-d-day-1.rgb",
+      "width": 640,
+      "height": 480
+    },
+    {
+      "id": "eval-d-day-2",
+      "identity": "eval-d",
+      "session": "day-2",
+      "split": "evaluation",
+      "path": "images/eval-d-day-2.rgb",
+      "width": 640,
+      "height": 480
+    }
+  ]
+}

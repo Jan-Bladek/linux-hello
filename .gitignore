@@ -5,3 +5,5 @@
 *.template
 /vendor/
 /work/
+__pycache__/
+*.py[cod]

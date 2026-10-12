@@ -38,6 +38,28 @@ name to include it. The Slint GUI runs under the logged-in user and opens the
 camera only when preview is requested. A successful compile is not proof that the
 target compositor, camera, accessibility stack or Fedora policy works.
 
+For a recorded local preflight, run `python3 tools/qualify-linux.py` from the
+source tree. It records Fedora/kernel/desktop, machine type and BIOS version,
+camera-node visibility and GUI development-library availability, without opening
+a camera. Reports and command logs go to a new private directory under ignored
+`work/`; serial numbers and camera pixels are not collected. Exit status 1 means
+the preflight found blockers; inspect `report.json`.
+
+Run `python3 tools/qualify-linux.py --verify` to also build the full workspace,
+check formatting and Clippy, run unit and isolated-bus tests, and collect CLI
+security/camera diagnostics. If the build fails, runtime checks are marked
+blocked and the recorder still runs tests and Clippy for core, face, IPC,
+fingerprint, PAM and daemon. This partial result does not pass full qualification;
+camera, storage, CLI and GUI remain outside that fallback. Use `--offline` when
+the complete locked dependency graph is cached.
+An offline failure naming a missing crate requires fetching that exact locked
+dependency from a terminal with network access; do not change `Cargo.lock`.
+
+If bindgen reports that it cannot find `libclang`, install the documented
+`clang-devel` build prerequisite. GUI errors naming `fontconfig`, `freetype2`,
+`xkbcommon` or `wayland-client` require their development packages listed above.
+These checks install no system packages.
+
 ## First hardware checks
 
 Use a video node reported by `hello cameras`; `/dev/video0` below is an example,
@@ -172,3 +194,13 @@ This version installs no authentication integration, so an authselect rollback i
 unnecessary. If future integration is developed, follow the separate
 [VM backup/recovery procedure](../packaging/authselect/README.md) before any host
 deployment. Never compensate for a bad installation by weakening password policy.
+
+## Optional face diagnostics
+
+The default build and packages do not require OpenCV or weights. For the explicit
+`face-opencv` build, model provenance and live `face-probe` usage, see
+[inference diagnostics](inference.md). This does not enable PAM or enrollment.
+
+The optional build produces both `hello` and `hello-face-worker`; keep these
+executables in the same directory. Default RPM packages do not enable this feature
+or distribute weights. Do not install only the optional CLI without its worker.

@@ -17,6 +17,10 @@ pub const MAX_ENVELOPE_BYTES: usize = HEADER_LEN + MAX_TEMPLATE_BYTES + TAG_LEN;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
+    #[error("reference passphrase must contain 12 to 1024 bytes")]
+    InvalidPassphrase,
+    #[error("reference key derivation failed")]
+    KeyDerivation,
     #[error("secure randomness is unavailable")]
     RandomUnavailable,
     #[error("encrypted template is malformed or unauthentic")]
@@ -50,6 +54,23 @@ impl SecretKey {
         getrandom::fill(&mut *bytes).map_err(|_| StorageError::RandomUnavailable)?;
         Ok(Self(bytes))
     }
+}
+
+#[cfg(target_os = "linux")]
+fn passphrase_key(password: &[u8], salt: &[u8; 16]) -> Result<SecretKey, StorageError> {
+    if !(12..=1024).contains(&password.len()) {
+        return Err(StorageError::InvalidPassphrase);
+    }
+    // Fixed version/parameters: no attacker-controlled memory/time amplification.
+    let params =
+        argon2::Params::new(65536, 3, 1, Some(32)).map_err(|_| StorageError::KeyDerivation)?;
+    let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let mut key = Zeroizing::new([0u8; 32]);
+    let mut memory = Zeroizing::new(vec![argon2::Block::default(); 65536]);
+    argon
+        .hash_password_into_with_memory(password, salt, &mut *key, &mut *memory)
+        .map_err(|_| StorageError::KeyDerivation)?;
+    Ok(SecretKey(key))
 }
 
 pub fn encrypt_template(

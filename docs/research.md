@@ -1,6 +1,6 @@
 # Upstream research and dependency decisions
 
-Reviewed 2026-10-10. Exact direct Rust versions are in the workspace `Cargo.toml`;
+Reviewed 2026-10-10; optional OpenCV adapter added 2026-10-11. Exact direct Rust versions are in the workspace `Cargo.toml`;
 the committed `Cargo.lock` fixes the resolved graph. Research establishes API and
 licensing direction, not hardware compatibility or security certification.
 The initial graph has unresolved upstream maintenance advisories, documented in
@@ -22,7 +22,8 @@ that every transitive dependency remains maintained.
 | chacha20poly1305 / zeroize | 0.11.0 / 1.9.1 |
 | getrandom / sha2 | 0.4.3 / 0.11.0 |
 | tempfile / libc | 3.27.0 / 0.2.190 |
-| ONNX Runtime | No runtime or model bundled/loaded; backend remains gated |
+| OpenCV Rust binding / native runtime | Optional `opencv` 0.101.1 / tested Fedora OpenCV 4.13.0; CPU-only diagnostics |
+| ONNX Runtime | Not used or bundled; ONNX inference uses optional OpenCV DNN |
 | fprintd / PAM / Polkit / systemd | Fedora-provided system components; record installed RPM versions in hardware/VM reports |
 
 ## D-Bus, UI and camera
@@ -79,7 +80,10 @@ bundled. See [upstream model licensing](https://github.com/deepinsight/insightfa
 
 ## ONNX model-selection and evaluation gate
 
-No candidate has passed both licensing and security evaluation in this environment.
+The optional YuNet/SFace adapter now passes functional detection/alignment/inference
+tests. Exact artifact pins, preprocessing, upstream licenses and unresolved training-data
+provenance are recorded in [inference diagnostics](inference.md). No candidate has passed
+both the full licensing review and security evaluation in this environment.
 A detector and embedding model need explicit weight and training-data provenance,
 redistribution terms, model hashes, opset/runtime compatibility, preprocessing,
 alignment and normalization definitions. PAD needs a separate design and report.

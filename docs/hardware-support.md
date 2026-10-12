@@ -1,6 +1,10 @@
 # Camera compatibility
 
-**Lenovo Yoga Slim 7 14IMH9: not yet physically validated.** The software has a real Linux V4L2 capture path and simulated failure tests. Successful compilation and simulated tests do not establish laptop compatibility. No physical camera was available to the development environment.
+**Lenovo Yoga Slim 7 14IMH9: basic physical capture validated on 2026-10-11.**
+On Fedora 44 KDE/Wayland, native UVC YUYV and GREY capture, conversion, release,
+SIGINT cancellation and reopen passed. Full hardware qualification remains
+incomplete; one initial RGB run rejected a driver-marked corrupted frame.
+See the [executed results](validation.md#native-fedora-and-physical-cameras--2026-10-11).
 
 Lenovo specifies an FHD camera with IR, an electronic shutter and a ToF sensor for this model family. This describes the product hardware; it does not establish Linux access to IR illumination or ToF data. Verify the actual camera module in the specific laptop before choosing a driver. [Lenovo PSREF](https://psref.lenovo.com/syspool/Sys/PDF/Yoga/Yoga_Slim_7_14IMH9/Yoga_Slim_7_14IMH9_Spec.PDF)
 
@@ -24,6 +28,23 @@ All raw frame ownership stays inside the calling process; there is no camera-fra
 The mmap adapter uses the generated ABI types and ioctl constants in `v4l` 0.14.0. Its small unsafe boundary is confined to `crates/hello-camera/src/linux.rs`, with ownership and bounds checks before copying camera buffers. It uses `File` cleanup rather than the upstream mmap stream destructor, which can panic for some cleanup errors. Reference APIs: [v4l 0.14.0](https://docs.rs/v4l/0.14.0/v4l/), [Linux streaming mmap](https://docs.kernel.org/userspace-api/media/v4l/mmap.html), [V4L2 capabilities](https://docs.kernel.org/userspace-api/media/v4l/vidioc-querycap.html).
 
 ## Lenovo qualification procedure
+
+The reusable recorder can run the bounded capture/release/reopen test and save
+its command result alongside local environment metadata:
+
+```sh
+python3 tools/qualify-linux.py
+python3 tools/qualify-linux.py --verify --device /dev/videoN
+```
+
+Replace `/dev/videoN` with an explicitly selected capture node. Only `--device`
+enables physical capture; preflight and `--verify` alone never start a stream.
+The recorder also tests CLI SIGINT cancellation and reopen on that selected node.
+It refuses root execution and existing report directories. It writes
+logs and `report.json` under `work/`, without saving frames. A kernel-visible
+camera absent from `/dev` is reported as an environment blocker, which can occur
+inside an agent sandbox. Run qualification in the regular desktop terminal.
+Passing the automated hardware test leaves the manual checks below pending.
 
 Run as the logged-in desktop user on the Lenovo with its shutter open. Do not run the GUI as root or weaken `/dev/video*` permissions. Ensure another camera application is not holding the device. Install Fedora `v4l-utils` only if the local administrator wants the auxiliary diagnostic tool.
 
@@ -53,5 +74,13 @@ For unsupported hardware, show the specific diagnostic and retain password authe
 
 | System | Capture | IR/illumination | Cancellation/reopen | Desktop integration |
 |---|---|---|---|---|
-| Lenovo Yoga Slim 7 14IMH9, Core Ultra 5 125H | Unverified | Unverified | Unverified | GNOME/KDE/Hyprland unverified |
+| Lenovo Yoga Slim 7 14IMH9, Fedora 44, kernel 7.2.9 | YUYV 640×480 (`video0`) and GREY 640×360 (`video2`) passed; one initial corrupted RGB frame rejected | Scoped MS face mode and alternating-frame response verified on `04f2:b7f5` revision `7204`; operator confirms illuminator and camera working; spectral measurement pending | SIGINT/SIGTERM emitter restoration and cooperative lease exclusion passed; suspend/unplug pending | KDE Wayland startup passed; operator confirms camera/illuminator operation following GUI instructions; GNOME and Hyprland pending |
 | Simulated camera tests | Frame validation tested | Not simulated as a security property | Timeout/cancel/reconnect/identity rejection tested | Not applicable |
+
+## Monochrome settling diagnosis
+
+The latest 120-frame GREY series identified eight initial poor-quality frames;
+112 later frames passed. The diagnostic face probe now waits for a quality-acceptable
+candidate within a bounded series. Read-only control/USB inventories and the
+unconfirmed emitter/spectrum/recognition gates are recorded in
+[IR qualification](ir-qualification.md). This does not establish liveness.
