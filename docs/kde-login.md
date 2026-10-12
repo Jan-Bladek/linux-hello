@@ -90,14 +90,33 @@ output. Diagnostics never change matching, timeouts, credential checks or the
 requirement for three suitable matching frames. A rejected score is not evidence
 that lowering the provisional threshold would be safe.
 
-Immediately before `auth substack password-auth`, the tool inserts:
+The tool replaces only the authentication `password-auth` substack with:
 
 ```pam
 # Linux Hello KDE login experimental integration
-auth        [success=1 default=ignore] /usr/lib64/security/pam_linuxhello.so
+auth        substack      linuxhello-kde-auth
+# Linux Hello original password line: auth        substack      password-auth
 ```
 
-Success skips exactly that one password substack. Earlier SELinux controls and
+The original line is retained in a validated comment for exact rollback, including
+its spacing. A separate root-owned `/etc/pam.d/linuxhello-kde-auth` contains:
+
+```pam
+auth sufficient /usr/lib64/security/pam_linuxhello.so
+auth substack password-auth
+```
+
+Success is recorded by `sufficient` and ends only the inner substack. Rejection
+executes the original password substack. A numeric success jump in the earlier
+integration did not record a positive authentication result, so a matched face
+could still produce PAM_PERM_DENIED6 when later optional wallet modules could
+not authenticate. See the upstream [Linux-PAM control semantics](https://github.com/linux-pam/linux-pam/blob/master/doc/man/pam.conf-syntax.xml)
+and [authentication dispatch](https://github.com/linux-pam/linux-pam/blob/master/libpam/pam_dispatch.c).
+The manager migrates only the exact previous managed block;
+unrecognized administrator modifications are refused. The companion dependency
+is validated, installed and relabeled before the service override after both live
+tests pass. A companion file with unexpected contents is never overwritten.
+Earlier SELinux controls and
 later optional wallet/postlogin hooks remain in place; account/password/session
 lines are preserved exactly. No failure/partial/unknown-face/error bypasses the
 original password stack. Helper cancellation/timeout/cleanup semantics remain the
@@ -125,7 +144,9 @@ sudo /usr/local/libexec/linux-hello-sudo/manage-kde.py status --user jan
 sudo /usr/local/libexec/linux-hello-sudo/manage-kde.py disable --user jan
 ```
 
-Disable removes the exact integration block and target user's marker. If the
+Disable restores the saved password line and removes the target user's marker. The
+shared companion may remain: without a service reference and account opt-in it
+does not enable face login. If the
 original config came from the vendor and the remaining content still matches
 that vendor file, it removes the override to resume vendor updates. Otherwise it
 preserves the administrator's remaining configuration. Backups/metadata remain

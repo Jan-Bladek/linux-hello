@@ -1050,3 +1050,39 @@ and ordinary mode: both complete AUTH/ACCT/SETCRED0 only for success; both rejec
 failure with AUTH7. These simulated tests are not biometric validation.
 The updated helper/module/activation scripts were installed. KDE remains disabled
 after the rejected real scan; sudo remains enabled and SELinux remains enforcing.
+
+### Preserve a positive PAM result in the KDE parent stack (2026-10-12)
+
+The owner's supplied trace now proves real three-frame matches in both scans
+(minimum similarities0.853 and0.870). The adapter-only scan passed AUTH/ACCT/SETCRED;
+the full parent returned AUTH6 despite matching. The previous success=1 jump
+skipped the password substack without recording a positive authentication result.
+Later optional wallet handlers did not supply one; Linux-PAM's dispatch retained
+its initial PERM_DENIED result. This is a PAM-control bug, not an embedding error.
+
+Replaced the numeric jump with a dedicated authentication substack containing
+the sufficient face adapter followed by the unchanged password-auth substack.
+Sufficient records success and terminates only the nested stack. Parent SELinux,
+wallet/postlogin, account/password/session controls remain in place. Rejection
+still invokes passwords; earlier required denial remains authoritative. The
+manager preserves the exact original password line for rollback and migrates
+the exact previous block. The companion is root-owned, has bounded fixed contents,
+and is installed/relabelled before the service override only after both live tests.
+Existing administrator changes to it are rejected rather than overwritten.
+
+Python25 tests and diff/shell checks passed. A recursively private mount-namespace
+regression with simulated helper exits covers the actual installed KDE parent
+and included dependencies: success -> AUTH/ACCT/SETCRED0; rejection -> non-success
+in ordinary and diagnostic modes; preceding required deny -> non-success. This
+tests dispatch, not biometric accuracy. The old parent jump is explicitly checked
+for AUTH6 when testing the unmodified vendor stack. A real xdm_t password fallback
+test with the detector temporarily unavailable and original masked account
+password completed AUTH/ACCT/SETCRED0; model/marker were restored in finally.
+No desktop session was opened and no display-manager restart was performed.
+
+The installed manager was updated. A new actual activation attempt rejected the
+first scan at0.773/0.800 with centroid_similarity_below_threshold; identity/presence
+was not independently established for that agent-triggered attempt. It did not
+activate production KDE PAM. The owner must run the installed activation again
+while facing the original camera. No threshold, model, enrollment, or SELinux
+enforcement was weakened to force acceptance; existing sudo remains enabled.

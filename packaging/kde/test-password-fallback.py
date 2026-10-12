@@ -37,6 +37,7 @@ def main():
             conf=Path(tmp)
             m.snapshot_pam(conf)
             m.sudo.atomic_write(conf/service,content,0o600)
+            m.sudo.atomic_write(conf/m.SUBSTACK,m.AUTH_STACK.encode(),0o600)
             subprocess.run(['/usr/sbin/restorecon','-R',tmp],check=True)
             print('Detector intentionally unavailable. Enter the original account password in the hidden PAM prompt.',flush=True)
             subprocess.run(['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(m.BASE/'kde-pam-probe'),service,user,str(conf),'--password'],check=True,timeout=60)

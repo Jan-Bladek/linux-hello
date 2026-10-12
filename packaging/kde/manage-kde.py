@@ -22,7 +22,11 @@ spec.loader.exec_module(sudo)
 ROOT = sudo.ROOT
 BASE = Path('/usr/local/libexec/linux-hello-sudo')
 MARKER = '# Linux Hello KDE login experimental integration\n'
-LINE = 'auth        [success=1 default=ignore] /usr/lib64/security/pam_linuxhello.so\n'
+LEGACY_LINE = 'auth        [success=1 default=ignore] /usr/lib64/security/pam_linuxhello.so\n'
+SUBSTACK = 'linuxhello-kde-auth'
+LINE = f'auth        substack      {SUBSTACK}\n'
+ORIGINAL = '# Linux Hello original password line: '
+AUTH_STACK = 'auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth substack password-auth\n'
 SERVICES = ('plasmalogin', 'sddm')
 
 class ActivationError(RuntimeError):
@@ -71,22 +75,42 @@ def report_probe(output):
 def diagnostic_stack(content):
     """Enable metadata only in the private root-owned test, never production PAM."""
     text = content.decode('utf-8')
-    if text.count(LINE) != 1: raise RuntimeError('Missing unique Linux Hello test line')
-    return text.replace(LINE, LINE.rstrip('\n') + ' diagnostic\n', 1).encode()
+    line = 'auth sufficient /usr/lib64/security/pam_linuxhello.so\n'
+    if text.count(line) != 1: raise RuntimeError('Missing unique Linux Hello test line')
+    return text.replace(line, line.rstrip('\n') + ' diagnostic\n', 1).encode()
 
 def changed(original, enable):
+    # Migrate only the exact old managed jump block; preserve all other lines.
+    if MARKER + LEGACY_LINE in original:
+        if original.count(MARKER) != 1 or original.count(LEGACY_LINE) != 1:
+            raise RuntimeError('Malformed legacy Linux Hello KDE PAM block')
+        original = original.replace(MARKER + LEGACY_LINE, '', 1)
     if original.count(MARKER) != original.count(LINE) or original.count(MARKER) > 1:
         raise RuntimeError('Malformed Linux Hello KDE PAM block')
     if MARKER in original:
-        if MARKER + LINE not in original: raise RuntimeError('Non-adjacent Linux Hello KDE PAM block')
-        return original if enable else original.replace(MARKER + LINE, '', 1)
+        lines=original.splitlines(keepends=True)
+        i=lines.index(MARKER)
+        if i+2>=len(lines) or lines[i+1]!=LINE or not lines[i+2].startswith(ORIGINAL) or original.count(ORIGINAL)!=1:
+            raise RuntimeError('Malformed Linux Hello KDE PAM block')
+        password=lines[i+2][len(ORIGINAL):]
+        if password.split()!=['auth','substack','password-auth']:
+            raise RuntimeError('Malformed saved password substack')
+        if enable: return original
+        lines[i:i+3]=[password]
+        return ''.join(lines)
+    if ORIGINAL in original or SUBSTACK in original or LEGACY_LINE in original:
+        raise RuntimeError('Unmanaged Linux Hello KDE PAM configuration')
     if not enable: return original
     lines = original.splitlines(keepends=True)
     indexes = [i for i,s in enumerate(lines) if s.split() == ['auth','substack','password-auth']]
     if len(indexes) != 1: raise RuntimeError('Unsupported KDE PAM stack; expected one auth substack password-auth')
-    # Jump only over that password substack after a successful face match. Keep
-    # preceding controls, optional wallet hooks, postlogin and all other groups.
-    lines.insert(indexes[0], MARKER + LINE)
+    # Sufficient records success and ends only this substack; wallet/postlogin
+    # and earlier required controls stay in the parent stack. Failed biometrics
+    # execute the unchanged password-auth substack. A numeric jump alone did
+    # not record a positive authentication result (PAM_PERM_DENIED6).
+    i=indexes[0]
+    if not lines[i].endswith('\n'): raise RuntimeError('Password substack must end with newline')
+    lines[i]=MARKER + LINE + ORIGINAL + lines[i]
     return ''.join(lines)
 
 def detect():
@@ -122,7 +146,8 @@ def probe(user, content):
         sudo.atomic_write(conf / service, strict.encode(), 0o600)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         run_probe(command,1)
-        sudo.atomic_write(conf / service, diagnostic_stack(content), 0o600)
+        sudo.atomic_write(conf / service, content, 0o600)
+        sudo.atomic_write(conf / SUBSTACK, diagnostic_stack(AUTH_STACK.encode()), 0o600)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         # Identical SELinux domain to the real Plasma/SDDM root helper. Probe
         # authenticates/checks account/credentials but opens no desktop session.
@@ -156,6 +181,13 @@ def main():
     sudo.protected(ROOT / '.anchor')
     record=ROOT / f'kde-{service}-original.json'
     if args.action=='enable':
+        companion=Path('/etc/pam.d') / SUBSTACK
+        companion_before=None
+        if companion.exists() or companion.is_symlink():
+            sudo.protected(companion)
+            companion_before=companion.read_bytes()
+            if companion_before!=AUTH_STACK.encode():
+                raise RuntimeError('Managed authentication substack has administrator changes')
         sudo.protected(ROOT / str(uid) / 'config.json',True)
         sudo.protected(BASE / 'hello-sudo')
         sudo.protected('/usr/lib64/security/pam_linuxhello.so')
@@ -176,6 +208,17 @@ def main():
     # Preserve unexpected administrator changes made during the live probe.
     if source.read_bytes()!=original or ((pam.exists() or pam.is_symlink()) != override):
         raise RuntimeError('KDE PAM changed during verification')
+    if args.action=='enable':
+        if companion.exists() or companion.is_symlink():
+            sudo.protected(companion)
+            if companion_before is None or companion.read_bytes()!=companion_before:
+                raise RuntimeError('Authentication substack changed during verification')
+        elif companion_before is not None:
+            raise RuntimeError('Authentication substack removed during verification')
+        # Install dependency first. On interruption the old service stack still
+        # works; the companion alone grants nothing without per-user opt-in.
+        sudo.atomic_write(companion,AUTH_STACK.encode(),0o644)
+        subprocess.run(['/usr/sbin/restorecon',str(companion)],check=True)
     if args.action=='disable':
         marker.unlink(missing_ok=True)
         # The PAM block is shared; disabling one user must not disable another

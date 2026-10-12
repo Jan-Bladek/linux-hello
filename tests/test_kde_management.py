@@ -9,7 +9,7 @@ spec=importlib.util.spec_from_file_location('kde_management',Path(__file__).pare
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class KdeManagement(unittest.TestCase):
     def test_diagnostics_only_change_the_isolated_test_stack(self):
-        production=m.changed('auth substack password-auth\n',True).encode()
+        production=m.AUTH_STACK.encode()
         diagnostic=m.diagnostic_stack(production)
         self.assertIn(b'pam_linuxhello.so diagnostic\n',diagnostic)
         self.assertNotIn(b'diagnostic',production)
@@ -38,7 +38,7 @@ class KdeManagement(unittest.TestCase):
         self.assertEqual(m.changed(changed,False),original)
         self.assertEqual(m.changed(changed,True),changed)
         self.assertTrue(changed.startswith(original.splitlines(keepends=True)[0]))
-        self.assertIn(m.LINE+'auth substack password-auth\n-auth optional pam_kwallet5.so',changed)
+        self.assertIn(m.LINE+m.ORIGINAL+'auth substack password-auth\n-auth optional pam_kwallet5.so',changed)
         self.assertTrue(changed.endswith('account include password-auth\nsession required pam_selinux.so open\n'))
     def test_refuses_unknown_stack_and_malformed_jump(self):
         for value in ['auth sufficient pam_unix.so\n','auth substack password-auth\nauth substack password-auth\n',m.MARKER,m.LINE,m.MARKER+'other\n'+m.LINE]:
@@ -46,3 +46,13 @@ class KdeManagement(unittest.TestCase):
     def test_disable_preserves_unrelated_configuration(self):
         source='auth required other.so\n'
         self.assertEqual(m.changed(source,False),source)
+
+    def test_legacy_jump_migrates_and_saved_line_is_validated(self):
+        original='auth   substack    password-auth\n-auth optional pam_kwallet5.so\n'
+        legacy=m.MARKER+m.LEGACY_LINE+original
+        current=m.changed(legacy,True)
+        self.assertNotIn(m.LEGACY_LINE,current)
+        self.assertEqual(m.changed(current,False),original)
+        self.assertEqual(m.changed(legacy,False),original)
+        with self.assertRaises(RuntimeError):
+            m.changed(current.replace(m.ORIGINAL+'auth   substack    password-auth',m.ORIGINAL+'auth required pam_permit.so'),False)

@@ -8,6 +8,10 @@ import pwd
 import subprocess
 import sys
 import tempfile
+import importlib.util
+sys.dont_write_bytecode=True
+spec=importlib.util.spec_from_file_location('kde_management',Path(__file__).with_name('manage-kde.py'))
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 BASE=Path('/usr/local/libexec/linux-hello-sudo')
 ROOT=Path('/var/lib/linux-hello/sudo')
@@ -55,9 +59,34 @@ def main():
             assert subprocess.run(command,timeout=10).returncode==0,'successful verifier must complete auth/account/setcred'
             (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n')
             assert subprocess.run(command,timeout=10).returncode==0,'diagnostics must preserve auth/account/setcred'
+            # Reproduce the actual parent stack including optional wallet hooks.
+            # Numeric success jumps previously left no positive impression and
+            # failed here with PERM_DENIED6 despite a successful face helper.
+            source=Path('/etc/pam.d/plasmalogin')
+            if not source.exists(): source=Path('/usr/lib/pam.d/plasmalogin')
+            m.snapshot_pam(conf)
+            original=source.read_text()
+            if m.MARKER not in original:
+                password_line=next(line for line in original.splitlines(keepends=True) if line.split()==['auth','substack','password-auth'])
+                legacy=original.replace(password_line,m.MARKER+m.LEGACY_LINE+password_line,1)
+                (conf/'plasmalogin').write_text(legacy)
+                subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)],check=True)
+                old=subprocess.run(command,timeout=10,capture_output=True,text=True)
+                assert old.returncode!=0 and 'PAM_AUTHENTICATE=6' in old.stderr,'old numeric jump should reproduce the missing positive auth result'
+            full=m.changed(source.read_text(),True)
+            (conf/'plasmalogin').write_text(full)
+            (conf/m.SUBSTACK).write_text(m.AUTH_STACK)
+            subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)],check=True)
+            assert subprocess.run(command,timeout=10).returncode==0,'matched face must complete the real KDE parent stack'
+            # A previous required denial must not be overridden by biometrics.
+            (conf/'plasmalogin').write_text('auth required pam_deny.so\n'+full)
+            assert subprocess.run(command,timeout=10).returncode!=0,'earlier required failure must survive biometric success'
+            (conf/'plasmalogin').write_text(full)
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/mount','--bind',str(bad),str(BASE/'hello-sudo')],check=True)
             assert subprocess.run(command,timeout=10).returncode!=0,'rejected verifier must not authenticate'
+            (conf/m.SUBSTACK).write_bytes(m.diagnostic_stack(m.AUTH_STACK.encode()))
+            assert subprocess.run(command,timeout=10).returncode!=0,'diagnostic rejection must retain the password fallback'
             (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
             assert subprocess.run(command,timeout=10).returncode!=0,'normal rejection must not authenticate either'
         finally:
