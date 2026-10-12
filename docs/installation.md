@@ -2,7 +2,8 @@
 
 Version 0.1.0-dev is a development preview. These steps build real camera
 diagnostics and a desktop preview; they do not enable facial authentication. The
-PAM, model/PAD, trusted enrollment and TPM release gates remain closed.
+production model/PAD and TPM release gates remain closed. A separate explicit
+experimental sudo opt-in is described at the end of this document.
 
 ## Fedora development build
 
@@ -204,3 +205,12 @@ The default build and packages do not require OpenCV or weights. For the explici
 The optional build produces both `hello` and `hello-face-worker`; keep these
 executables in the same directory. Default RPM packages do not enable this feature
 or distribute weights. Do not install only the optional CLI without its worker.
+
+### Explicit experimental sudo opt-in
+
+The default diagnostic installation above does not authenticate users. A separate
+optional root-owned verifier and PAM adapter can be installed and enabled for
+`sudo` only after protected reference provisioning and live verification. See
+[sudo activation, limitations and rollback](sudo-integration.md). This opt-in
+preserves password fallback and does not change authselect/system-auth. It has
+no validated presentation attack detection or measured NIR FAR/FRR.

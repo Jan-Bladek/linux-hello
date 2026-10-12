@@ -1,12 +1,15 @@
 # Linux Hello
 
-A Rust foundation for private, local biometrics on Fedora, with a working V4L2
-diagnostic CLI and Slint camera preview. **This is a development release. It cannot
-enroll a face or authenticate a user. It is not a replacement for a password.**
+A Rust application for private, local biometrics on Fedora, with V4L2 camera
+diagnostics, Slint enrollment/recognition and an optional experimental sudo
+integration. **This is a development release with unvalidated presentation attack
+protection and NIR FAR/FRR. Preserve password fallback.**
 
-The immediate milestone is usable camera diagnostics and an auditable security
-foundation. No model weights, fake recognition results, PAM module, telemetry, or
-automatic authentication configuration are included.
+Default builds provide camera diagnostics. Explicit features add pinned CPU
+models, encrypted multi-frame enrollment and passive recognition. sudo opt-in
+requires a separately installed root-owned verifier and protected enrollment;
+ordinary installation does not enable PAM. Model weights and telemetry are not
+included in the repository.
 
 ![Actual Slint interface, rendered by the headless software-renderer test](docs/screenshots/overview.png)
 
@@ -22,7 +25,7 @@ automatic authentication configuration are included.
 | `hello-storage` | XChaCha20-Poly1305 authenticated envelopes, owner binding, zeroizing secret values, Linux descriptor-relative atomic save/load/delete | Trusted key provisioning, security review and TPM integration; GUI diagnostic references use a separate passphrase |
 | `hello-daemon` / `hello-ipc` | Real read-only D-Bus service, bus-derived requester UID, bounded client calls, concurrency tests | Trusted enrollment and authentication; camera frames never transit this service |
 | `hello-fingerprint` | Real fprintd reader discovery and caller's enrolled-finger status | Fingerprint enrollment/removal UI; use existing fprintd tools meanwhile |
-| `hello-pam` | Readiness/blocker report only | No `pam_sm_*` exports and no installable module |
+| `hello-pam` / `hello-sudo` | Default readiness report; explicit features export a sudo-only PAM adapter, root verifier, protected encrypted import, password fallback and rollback | Experimental opt-in; PAD and representative NIR FAR/FRR unvalidated; no login/sshd integration |
 | Packaging / CI | RPM specification, hardened manual-start diagnostic service, D-Bus policy, release gates and CI | Fedora RPM install/remove, SELinux and disposable-VM validation |
 
 The camera backend supports single-planar streaming capture devices. Unsupported
@@ -262,3 +265,11 @@ is GPL-3.0-only ([LICENSE-GPL-3.0](LICENSE-GPL-3.0)); this project chooses Slint
 GPL licensing option. Distributing GUI binaries requires corresponding source
 and compliance with GPL-3.0. No pretrained model license is implied by the code
 license, and no weights are distributed.
+
+## Optional experimental sudo integration
+
+A separate root-owned PAM adapter/helper is available behind explicit `sudo-pam`
+and `sudo-face` features. Installation leaves PAM unchanged; root-authorized
+reference import and live checks precede sudo-only activation. Existing password
+fallback is retained. PAD and NIR FAR/FRR are not validated. See
+[installation, activation and rollback](docs/sudo-integration.md).

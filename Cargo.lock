@@ -1809,6 +1809,8 @@ name = "hello-pam"
 version = "0.1.0-dev"
 dependencies = [
  "hello-ipc",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -1838,6 +1840,24 @@ dependencies = [
  "libc",
  "tempfile",
  "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
+name = "hello-sudo"
+version = "0.1.0-dev"
+dependencies = [
+ "getrandom 0.4.3",
+ "hello-camera",
+ "hello-cli",
+ "hello-face",
+ "hello-pam",
+ "hello-storage",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
  "zeroize",
 ]
 

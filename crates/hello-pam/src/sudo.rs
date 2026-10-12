@@ -1,0 +1,230 @@
+//! Opt-in sudo-only PAM adapter. Native inference never runs inside sudo.
+use crate::boundary;
+use std::{
+    ffi::{CStr, c_char, c_int, c_void},
+    path::Path,
+    process::{Command, Stdio},
+    time::{Duration, Instant},
+};
+const PAM_SUCCESS: c_int = 0;
+const PAM_IGNORE: c_int = 25;
+#[link(name = "libpam.so.0", kind = "dylib", modifiers = "+verbatim")]
+unsafe extern "C" {
+    fn pam_get_item(pamh: *const c_void, item: c_int, out: *mut *const c_void) -> c_int;
+    fn pam_get_user(pamh: *mut c_void, out: *mut *const c_char, prompt: *const c_char) -> c_int;
+    fn pam_prompt(
+        pamh: *mut c_void,
+        style: c_int,
+        response: *mut *mut c_char,
+        format: *const c_char,
+        ...
+    ) -> c_int;
+}
+fn permitted(service: &str, uid: u32, caller: u32) -> bool {
+    matches!(service, "sudo" | "sudo-i") && uid >= 1000 && uid == caller
+}
+fn authenticate(pamh: *mut c_void, silent: bool) -> Option<()> {
+    // SAFETY: geteuid/getuid take no pointers.
+    if pamh.is_null() || unsafe { libc::geteuid() } != 0 {
+        return None;
+    }
+    let mut service = std::ptr::null();
+    let mut user = std::ptr::null();
+    // SAFETY: PAM supplied a live handle; outputs are writable. PAM owns the
+    // returned terminated strings for the duration of this invocation.
+    if unsafe { pam_get_item(pamh, 1, &mut service) } != PAM_SUCCESS || service.is_null() {
+        return None;
+    }
+    // SAFETY: same live handle; null prompt means use standard PAM_USER prompt.
+    if unsafe { pam_get_user(pamh, &mut user, std::ptr::null()) } != PAM_SUCCESS || user.is_null() {
+        return None;
+    }
+    // SAFETY: successful PAM getters returned terminated strings.
+    let service = unsafe { CStr::from_ptr(service.cast()) }.to_str().ok()?;
+    // SAFETY: pam_get_user returned a valid string owned by this PAM transaction.
+    let user = unsafe { CStr::from_ptr(user) }.to_str().ok()?;
+    let (uid, _, _) = boundary::account(user).ok()?;
+    // sudo may switch all process UIDs to root before PAM. In that case use
+    // PAM_RUSER set by the trusted sudo plugin, never SUDO_USER/environment.
+    // SAFETY: getuid has no preconditions.
+    let mut caller = unsafe { libc::getuid() };
+    if caller == 0 {
+        let mut ruser = std::ptr::null();
+        // SAFETY: live PAM handle and writable output, item 8 is PAM_RUSER.
+        if unsafe { pam_get_item(pamh, 8, &mut ruser) } != PAM_SUCCESS || ruser.is_null() {
+            return None;
+        }
+        // SAFETY: successful getter returned a terminated PAM-owned string.
+        let name = unsafe { CStr::from_ptr(ruser.cast()) }.to_str().ok()?;
+        caller = boundary::account(name).ok()?.0;
+    }
+    if !permitted(service, uid, caller) {
+        return None;
+    }
+    boundary::protected_file(Path::new(boundary::HELPER), false, 100_000_000).ok()?;
+    // Only the configured UID can enable this path. Missing enrollment falls
+    // through immediately, without opening the camera or suppressing passwords.
+    boundary::protected_file(
+        &Path::new(boundary::ROOT)
+            .join(uid.to_string())
+            .join("config.json"),
+        true,
+        16384,
+    )
+    .ok()?;
+    if !silent {
+        // SAFETY: valid handle, informational message (no response required),
+        // constant format and a terminated string matching the single %s.
+        unsafe {
+            pam_prompt(
+                pamh,
+                4,
+                std::ptr::null_mut(),
+                c"%s".as_ptr(),
+                c"Linux Hello: spójrz prosto w kamerę. W razie braku dopasowania użyj hasła."
+                    .as_ptr(),
+            )
+        };
+    }
+    let child = Command::new(boundary::HELPER)
+        .args(["verify", &uid.to_string()])
+        .env_clear()
+        .env("LANG", "C.UTF-8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    wait_helper(child, Duration::from_secs(25), Duration::from_secs(10))
+}
+fn wait_helper(mut child: std::process::Child, timeout: Duration, grace: Duration) -> Option<()> {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return (status.success() && started.elapsed() < timeout).then_some(());
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => (),
+        }
+        if started.elapsed() >= timeout {
+            // SAFETY: child is still owned/unreaped and its positive PID is valid.
+            unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
+            let cleanup = Instant::now();
+            while cleanup.elapsed() < grace {
+                if !matches!(child.try_wait(), Ok(None)) {
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+/// # Safety
+/// The PAM caller must supply a live PAM handle, as required by Linux-PAM.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pam_sm_authenticate(
+    pamh: *mut c_void,
+    flags: c_int,
+    _argc: c_int,
+    _argv: *const *const c_char,
+) -> c_int {
+    match std::panic::catch_unwind(|| authenticate(pamh, flags & 0x8000 != 0)) {
+        Ok(Some(())) => PAM_SUCCESS,
+        _ => PAM_IGNORE,
+    }
+}
+/// # Safety
+/// Called by PAM; this adapter does not create credentials or read AUTHTOK.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn pam_sm_setcred(
+    _pamh: *mut c_void,
+    _flags: c_int,
+    _argc: c_int,
+    _argv: *const *const c_char,
+) -> c_int {
+    PAM_IGNORE
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn child_failure_and_timeouts_never_become_success() {
+        let spawn = |program: &str, args: &[&str]| {
+            Command::new(program)
+                .args(args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap()
+        };
+        assert!(
+            wait_helper(
+                spawn("/usr/bin/true", &[]),
+                Duration::from_secs(2),
+                Duration::from_millis(100)
+            )
+            .is_some()
+        );
+        assert!(
+            wait_helper(
+                spawn("/usr/bin/false", &[]),
+                Duration::from_secs(2),
+                Duration::from_millis(100)
+            )
+            .is_none()
+        );
+        // Even an already successful child cannot authenticate after its deadline.
+        let mut exited = spawn("/usr/bin/true", &[]);
+        exited.wait().unwrap();
+        assert!(wait_helper(exited, Duration::ZERO, Duration::ZERO).is_none());
+        // Cancellation may make a helper exit0; the expired parent still rejects.
+        let cancelled = spawn(
+            "/usr/bin/python3",
+            &[
+                "-c",
+                "import signal,time; signal.signal(signal.SIGTERM, lambda *x: exit(0)); time.sleep(5)",
+            ],
+        );
+        assert!(
+            wait_helper(
+                cancelled,
+                Duration::from_millis(150),
+                Duration::from_millis(150)
+            )
+            .is_none()
+        );
+        let hung = spawn(
+            "/usr/bin/python3",
+            &[
+                "-c",
+                "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(5)",
+            ],
+        );
+        let pid = hung.id();
+        assert!(wait_helper(hung, Duration::from_millis(150), Duration::from_millis(50)).is_none());
+        // SAFETY: kill with signal0 checks existence without delivering a signal.
+        assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1);
+    }
+    #[test]
+    fn restricts_service_and_claimed_identity() {
+        assert!(permitted("sudo", 1000, 1000));
+        assert!(permitted("sudo-i", 1000, 1000));
+        for service in ["login", "sshd", "su", "sudo-test", ""] {
+            assert!(!permitted(service, 1000, 1000));
+        }
+        assert!(!permitted("sudo", 0, 0));
+        assert!(!permitted("sudo", 1001, 1000));
+        assert!(authenticate(std::ptr::null_mut(), true).is_none());
+    }
+}

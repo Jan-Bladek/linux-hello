@@ -915,3 +915,35 @@ partial two-frame rejection, eight quality failures before recovery, bounded
 persistent no-face, duplicate samples, multiple faces, worker errors, reference
 changes and cancellation including final progress. GUI rendering passed including
 the separate diagnostic button. No fresh physical owner verification was performed.
+
+## Opt-in sudo integration — 2026-10-12
+
+Added optional `hello-pam/sudo-pam` and `hello-sudo/sudo-face`, root-owned
+installation, UID-bound encrypted reference import, three-frame passive
+verification, bounded child cancellation/reaping, sudo-only opt-in and rollback.
+Default diagnostic daemon/PAM capabilities remain unqualified. Original sudo
+password/account/session includes and authselect configuration are preserved.
+
+On this Fedora host the module/helper/models were installed as root, an existing
+IR reference was explicitly unlocked/imported through a masked owner terminal,
+and live enrollment verification plus a second pre-activation match succeeded.
+The installed management script activated only `/etc/pam.d/sudo`. A fresh
+interactive `sudo -k; sudo id -u` returned0 without submitting a password. A
+controlled root test temporarily removed the installed detector file, then ran
+real sudo as UID1000 after clearing its timestamp: the original password prompt
+appeared, correct password authentication returned0, and the model was restored
+in `finally` and compared with the original. Another acquisition/nonmatch attempt
+also fell back to password. `sudo -n` on this host refuses a fresh timestamp
+before interactive authentication; do not use it as a face-verification test.
+
+Before provisioning, actual Linux-PAM isolated-confdir tests passed: missing
+reference/module never succeeded with a deny stack; permit fallback proceeded;
+other service names did not gain a biometric success path. These temporary
+permit fixtures were not installed into system PAM and executed no privileged
+command. Rust tests cover timeout (including cancellation exit0), forced child
+reaping, service/claimed-account restrictions, corrupt/cross-UID configuration,
+invalid threshold and encrypted import checks. Existing passive matching and
+storage regressions, default workspace, optional tests, Clippy, formatting,
+18 Python tests and release compilation passed. Live owner matches are functional
+checks, not representative FAR/FRR or presentation-attack measurements. PAD remains
+unvalidated; no login/sshd/system-auth integration is enabled.

@@ -65,7 +65,7 @@ pub struct SessionReference {
 
 static NEXT_REFERENCE_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
-fn capture_binding(identity: &DeviceIdentity, ir: bool) -> Result<[u8; 32], Error> {
+pub fn capture_binding(identity: &DeviceIdentity, ir: bool) -> Result<[u8; 32], Error> {
     use sha2::{Digest, Sha256};
     let mut digest = Sha256::new();
     digest.update(b"linux-hello-diagnostic-camera-v1");
@@ -75,6 +75,22 @@ fn capture_binding(identity: &DeviceIdentity, ir: bool) -> Result<[u8; 32], Erro
 }
 
 impl SessionReference {
+    /// A caller supplying a protected template must still validate camera binding
+    /// and strict enrollment before opening the sensor. No result is cached.
+    pub fn from_template(template: hello_face::Template) -> Result<Self, Error> {
+        if template.capture_binding().is_none()
+            || template.dimensions() != 128
+            || !template.strict_available()
+            || template.sample_count() != REFERENCE_SAMPLES
+        {
+            return Err("incompatible or incomplete reference".into());
+        }
+        Ok(Self {
+            reference: Some(Reference::Multi(template)),
+            pending: None,
+            revision: NEXT_REFERENCE_REVISION.fetch_add(1, Ordering::Relaxed),
+        })
+    }
     pub fn begin_anonymous_enrollment(
         &mut self,
         identity: &DeviceIdentity,

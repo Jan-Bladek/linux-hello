@@ -23,6 +23,30 @@ pub struct SecureStore {
 }
 
 impl SecureStore {
+    /// Explicit administrator-authorized import. Reads an existing user-owned
+    /// encrypted store only; never creates or writes files under that identity.
+    /// The caller must authorize the target UID independently (fresh sudo).
+    pub fn import_passphrase(
+        path: &Path,
+        owner_uid: u32,
+        password: &[u8],
+    ) -> Result<Template, StorageError> {
+        // SAFETY: geteuid takes no pointers.
+        if unsafe { libc::geteuid() } != 0 || owner_uid < 1000 {
+            return Err(StorageError::OwnerMismatch);
+        }
+        let directory = open_directory(path, false, owner_uid)?;
+        lock_directory(&directory)?;
+        let salt = read_or_create_salt(&directory, owner_uid, false)?;
+        let key = super::passphrase_key(password, &salt)?;
+        let store = Self {
+            directory,
+            owner_uid,
+            effective_uid: owner_uid,
+            key,
+        };
+        store.load()?.ok_or(StorageError::InvalidEnvelope)
+    }
     /// Open an existing absolute private directory without following any symlink.
     /// Root may manage a target user's store only after upstream authorization.
     /// A non-root process may open only its own UID namespace.
@@ -328,6 +352,53 @@ impl Drop for Pending<'_> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn administrator_import_preserves_user_encryption_and_rejects_wrong_owner_or_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path();
+        // SAFETY: geteuid has no preconditions.
+        if unsafe { libc::geteuid() } != 0 {
+            assert!(matches!(
+                SecureStore::import_passphrase(path, 1000, b"test reference phrase"),
+                Err(StorageError::OwnerMismatch)
+            ));
+            return;
+        }
+        let salt = [6_u8; 16];
+        let password = b"test reference phrase";
+        let key = crate::passphrase_key(password, &salt).unwrap();
+        let template = crate::tests::template().bind_capture([8; 32]).unwrap();
+        let original = encrypt_template(&key, 1000, &template).unwrap();
+        std::fs::write(path.join("template.lht"), &original).unwrap();
+        std::fs::write(
+            path.join("passphrase.salt"),
+            [b"LHSALT01".as_slice(), &salt].concat(),
+        )
+        .unwrap();
+        for entry in [
+            path.to_path_buf(),
+            path.join("template.lht"),
+            path.join("passphrase.salt"),
+        ] {
+            let name = CString::new(entry.as_os_str().as_bytes()).unwrap();
+            // SAFETY: terminated absolute path inside our owned tempdir; test runs as root.
+            assert_eq!(unsafe { libc::chown(name.as_ptr(), 1000, 1000) }, 0);
+            let mode = if entry == path { 0o700 } else { 0o600 };
+            std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        let imported = SecureStore::import_passphrase(path, 1000, password).unwrap();
+        assert_eq!(imported.capture_binding(), Some([8; 32]));
+        assert!(SecureStore::import_passphrase(path, 1001, password).is_err());
+        assert!(SecureStore::import_passphrase(path, 1000, b"wrong reference phrase").is_err());
+        std::fs::set_permissions(
+            path.join("passphrase.salt"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        assert!(SecureStore::import_passphrase(path, 1000, password).is_err());
+        assert_eq!(std::fs::read(path.join("template.lht")).unwrap(), original);
+    }
 
     fn setup() -> (tempfile::TempDir, SecureStore) {
         let directory = tempfile::tempdir().unwrap();
