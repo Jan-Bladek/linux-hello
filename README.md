@@ -24,12 +24,26 @@ repository. No cloud processing or runtime model download is required.
 | KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE; other lockers are not integrated |
 | Diagnostic daemon | Read-only D-Bus status and bus-derived requester UID | No enrollment or authentication authority |
 | Fingerprints | fprintd discovery and enrolled-finger status | Enrollment/removal UI is not implemented |
-| Packaging | Diagnostic RPM specification and manual optional PAM installers | RPM lifecycle and broad desktop/security qualification remain release gates |
+| Packaging | Full Fedora source installer, diagnostic RPM specification and manual PAM alternatives | RPM lifecycle and broad desktop/security qualification remain release gates |
 
 Default builds provide diagnostics. Explicit features enable inference, the GUI
 face workflow and PAM adapters. Installing diagnostic packages does not enable
 PAM, start services or select an authselect profile. See the
 [documentation index and scope](docs/index.md).
+
+## Install on Fedora
+
+Recommended full installation (run as your desktop user, without sudo):
+
+```sh
+./install.sh
+```
+
+The installer handles Fedora dependencies, pinned Rust, tests, full compilation,
+verified model downloads, fixed-path helpers and the desktop launcher. Activate
+selected uses through the GUI after installation. See the
+[complete Polish installation guide](docs/install-fedora.md) for first-time setup,
+offline/build-only options, TPM, update and recovery.
 
 ## Build and run
 

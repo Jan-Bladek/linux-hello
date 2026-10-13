@@ -57,7 +57,8 @@ jobs:
         run: |
           sudo install -D -m 0755 target/release/hello-daemon /usr/libexec/hello-daemon
           systemd-analyze verify packaging/systemd/linux-hello.service
-          bash -n packaging/fedora/prepare-source.sh
+          for script in packaging/fedora/prepare-source.sh install.sh packaging/tpm/install-policy.sh; do bash -n "$script"; done
+          python3 -m py_compile packaging/installer/*.py
 
   face-diagnostics:
     name: Optional CPU adapter on Fedora

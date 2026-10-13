@@ -33,6 +33,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 
 ## Reading paths
 
+- [Full Fedora installer](install-fedora.md): complete source installation and GUI activation (Polish).
 - [Installation](installation.md): default builds, diagnostics/RPMs and links to optional integrations.
 - [Inference](inference.md): exact model hashes, preprocessing, quality, lifecycle and GUI usage.
 - [Sudo integration](sudo-integration.md): protected provisioning, authentication, diagnostics and rollback.

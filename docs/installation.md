@@ -1,4 +1,11 @@
-# Build, diagnostic installation and removal
+# Installation, builds and removal
+
+For the complete current Fedora application, use `./install.sh` as the ordinary
+desktop user. It builds face-enabled GUI/CLI and KDE-enabled PAM, verifies model
+hashes and installs the helpers without activating any account or editing PAM.
+The [full installer guide in Polish](install-fedora.md) includes dependencies,
+first run, options, TPM, upgrades and test limits. The remaining sections describe
+manual diagnostic builds and the separate diagnostic-only RPM specification.
 
 Version 0.1.0-dev is a development preview. These steps build real camera
 diagnostics and a desktop preview; they do not enable facial authentication. The

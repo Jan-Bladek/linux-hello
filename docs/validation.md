@@ -17,6 +17,38 @@ Current usage and activation are in [scope](index.md), [inference](inference.md)
 [sudo](sudo-integration.md) and [KDE](kde-login.md). This document preserves evidence;
 it is not the installation guide.
 
+## Complete Fedora source installer — 2026-10-13
+
+Added `install.sh` and unprivileged build/staging plus fixed-path administrator
+installation. It builds full GUI/CLI recognition, sudo and KDE PAM, pinned models,
+probe and policy; it never activates PAM/accounts or starts the diagnostic daemon.
+The recommended entry point and first-run steps are documented in Polish.
+
+Executed on the existing Fedora 44 KDE host: dry-run; full offline/skip-deps
+build-only with TPM policy; 22 GUI/helper/PAM tests passed (real-TPM test ignored
+by default); full release binaries and hardened C probe/policies built; model
+hash/size checks passed. A fresh private mount-namespace file-install test passed
+with existing policies, root/setuid modes and installed CLI smoke checks. Five
+installer regressions cover unsupported distributions, changed files, model pins,
+links/path injection, rollback and inert dry-run. The Python suite now has 37
+passing tests, including source-archive documentation discovery; 25 Markdown
+files passed link checks. Shell syntax, Python compilation, desktop-file validation
+and diff checks passed.
+
+The complete installer also ran as the ordinary owner with actual sudo
+authorization to update the current host. Before/after byte comparisons confirmed
+all checked active PAM files, encrypted template, profile configuration, TPM key
+and service opt-in markers unchanged; the plaintext key remains absent.
+Installed sudo, PlasmaLogin and KDE unlock statuses remain enabled; TPM status
+validates the current key/template; SELinux remains Enforcing. The installed GUI
+launched under Wayland for six seconds without error (terminated by timeout),
+and CLI help worked. No new live face match or session lock was performed.
+
+The first-install DNF transaction, rustup bootstrap/model downloads on a clean VM,
+new policy installation on a clean host, RPM lifecycle, other Fedora releases and
+other camera models were not validated by these tests. The installer is a source
+installer, not a reviewed/signed binary RPM distribution.
+
 ## TPM implementation — 2026-10-13
 
 Added optional Rust integration with systemd 259.9's TPM-only encrypted credentials.

@@ -66,12 +66,23 @@ def check_file(path, root):
     return failures
 
 
+def markdown_names(root):
+    if (root / '.git').exists():
+        return subprocess.check_output(
+            ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '--', '*.md'],
+            cwd=root, text=True,
+        ).splitlines()
+    # GitHub source archives contain no .git directory. Scan only source/doc
+    # locations, never downloaded crates, models, work data or build output.
+    files = list(root.glob('*.md'))
+    for name in ('docs', 'tests', 'packaging'):
+        files.extend((root / name).rglob('*.md'))
+    return [str(path.relative_to(root)) for path in files]
+
+
 def main():
     root = Path(__file__).resolve().parents[1]
-    names = subprocess.check_output(
-        ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '--', '*.md'],
-        cwd=root, text=True,
-    ).splitlines()
+    names = markdown_names(root)
     failures = [error for name in sorted(set(names)) for error in check_file(root / name, root)]
     if failures:
         print('\n'.join(failures), file=sys.stderr)

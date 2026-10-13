@@ -140,3 +140,11 @@ biometric or complete Polkit GUI acceptance test.
 See [TPM protection](../docs/tpm.md) for the explicitly invoked root-only real-TPM
 regression and optional KDE key-release context checks. They use synthetic data
 and private mount namespaces; ordinary tests do not require TPM hardware.
+
+## Fedora installer checks
+
+`tests/test_installer.py` verifies source-installer preflight, staged file/model
+integrity, path/link rejection and rollback. `packaging/installer/test-install.py`
+is an explicit root-only private-namespace file-install test; it requires a
+prepared private stage and already installed KDE/TPM policies, and never uses
+real biometric profiles or edits PAM. See [installer guide](../docs/install-fedora.md).

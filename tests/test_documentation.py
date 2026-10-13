@@ -26,3 +26,11 @@ class DocumentationLinks(unittest.TestCase):
             source = root / 'source.md'
             source.write_text('```sh\n[example](absent.md)\n```\n[external](https://example.invalid/x#missing)\n')
             self.assertEqual(m.check_file(source, root), [])
+
+    def test_source_archive_discovers_docs_without_scanning_build_or_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ['README.md', 'docs/install.md', 'tests/README.md', 'packaging/notes.md',
+                         'work/private.md', 'vendor/crate/README.md', 'target/build.md']:
+                path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('text')
+            self.assertEqual(set(m.markdown_names(root)), {'README.md', 'docs/install.md', 'tests/README.md', 'packaging/notes.md'})
