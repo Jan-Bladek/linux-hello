@@ -25,9 +25,10 @@ No undocumented Realtek intensity bytes were written.
 
 Native `IrEmitterLease` now enables this mode for an explicit capture session.
 CLI `capture`, optional `camera-quality` and `face-probe` accept `--ir-emitter`.
-GUI Camera has an opt-in **Use IR illumination** checkbox. Defaults leave the
-control untouched. No root, extra dependency, udev rule, boot service, external
-emitter executable or PAM change is required. Firmware mode is reapplied on every
+GUI **Osoba** has an opt-in **Doświetlenie podczerwienią (IR)** checkbox. Defaults leave the
+control untouched. For ordinary GUI/CLI capture, no root, extra dependency, udev rule, boot service,
+external emitter executable or PAM change is required. Optional PAM verification
+uses the same scoped control from its separately protected verifier. Firmware mode is reapplied on every
 requested session, rather than assuming settings survive a boot/resume.
 
 The adapter binds the selected opened device to its enumerated identity and

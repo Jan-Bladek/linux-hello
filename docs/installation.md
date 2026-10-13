@@ -3,7 +3,7 @@
 Version 0.1.0-dev is a development preview. These steps build real camera
 diagnostics and a desktop preview; they do not enable facial authentication. The
 production model/PAD and TPM release gates remain closed. A separate explicit
-experimental sudo opt-in is described at the end of this document.
+experimental sudo/KDE login/unlock opt-ins are linked at the end of this document.
 
 ## Fedora development build
 
@@ -36,7 +36,7 @@ target/debug/hello-settings
 
 The default workspace build omits the GUI; use `--workspace` or its explicit package
 name to include it. The Slint GUI runs under the logged-in user and opens the
-camera only when preview is requested. A successful compile is not proof that the
+camera only during an explicit preview, diagnostic, enrollment or recognition operation. A successful compile is not proof that the
 target compositor, camera, accessibility stack or Fedora policy works.
 
 For a recorded local preflight, run `python3 tools/qualify-linux.py` from the
@@ -191,26 +191,32 @@ are under `target/`; no system uninstall is needed because the build did not ins
 anything. Keep any explicitly created private library test data separate from
 the repository and remove it through the owning test's cleanup or reviewed path.
 
-This version installs no authentication integration, so an authselect rollback is
-unnecessary. If future integration is developed, follow the separate
-[VM backup/recovery procedure](../packaging/authselect/README.md) before any host
-deployment. Never compensate for a bad installation by weakening password policy.
+The default diagnostic installation requires no PAM rollback. Manual optional
+authentication is separate: disable its service-specific integrations before
+removing their helper/module files, using [sudo rollback](sudo-integration.md) and
+[KDE rollback](kde-login.md). Removing diagnostic RPMs does not disable a manually
+installed PAM adapter. Authselect profiles remain untouched. See the separate
+[VM recovery procedure](../packaging/authselect/README.md) for future profile changes.
 
 ## Optional face diagnostics
 
 The default build and packages do not require OpenCV or weights. For the explicit
 `face-opencv` build, model provenance and live `face-probe` usage, see
-[inference diagnostics](inference.md). This does not enable PAM or enrollment.
+[inference diagnostics](inference.md). This provides inference tools without enabling PAM; GUI face enrollment requires
+its explicit `face-diagnostics` feature and user actions.
 
 The optional build produces both `hello` and `hello-face-worker`; keep these
 executables in the same directory. Default RPM packages do not enable this feature
 or distribute weights. Do not install only the optional CLI without its worker.
 
-### Explicit experimental sudo opt-in
+### Explicit experimental authentication
 
 The default diagnostic installation above does not authenticate users. A separate
-optional root-owned verifier and PAM adapter can be installed and enabled for
-`sudo` only after protected reference provisioning and live verification. See
+optional root-owned verifier and PAM adapter can be installed and enabled after
+protected reference provisioning and live verification. Start with sudo, then
+optionally add KDE display-manager login and session unlocking independently. See
 [sudo activation, limitations and rollback](sudo-integration.md). This opt-in
 preserves password fallback and does not change authselect/system-auth. It has
-no validated presentation attack detection or measured NIR FAR/FRR.
+no validated presentation attack detection or measured representative NIR FAR/FRR.
+KDE setup, including the self-only locker launcher, is documented in
+[KDE login and Win + L](kde-login.md). Enabling sudo does not enable KDE automatically.

@@ -1,4 +1,4 @@
-# Experimental KDE login integration (Fedora)
+# Experimental KDE login and session unlock (Fedora)
 
 The `hello-pam/kde-pam` feature extends the existing protected sudo verifier to
 root Plasma Login Manager (`plasmalogin`) and SDDM (`sddm`) PAM services. It reuses
@@ -7,7 +7,7 @@ IR camera binding, alignment and three-frame passive matching. No head turns are
 required. It does not use GUI/session-D-Bus recognition results as authentication
 proof. The sudo adapter continues to work with its previous caller checks.
 
-This Fedora44 host uses Plasma Login Manager6.7.5, with vendor PAM defaults in
+This Fedora 44 host uses Plasma Login Manager6.7.5, with vendor PAM defaults in
 `/usr/lib/pam.d/plasmalogin`. `/etc/pam.d/plasmalogin` is an administrator override;
 its absence does not mean the display manager lacks PAM configuration. The
 manager detects the active systemd display manager and refuses unrelated service
@@ -20,6 +20,16 @@ installer or activation tool.
 ## Build and install
 
 Existing sudo provisioning is required (see [sudo integration](sudo-integration.md)).
+The `kde-pam` feature includes `sudo-pam`; use it when rebuilding the shared PAM
+module after KDE activation. Installing a sudo-only or default build over that
+module would remove KDE support. Installation copies files but does not activate
+login or locking.
+
+The commands below also require Fedora `checkmodule`, `semodule_package`,
+`semanage`, `runcon` and `setpriv` utilities. On the tested Fedora host these
+come from `checkpolicy`, `policycoreutils`, `policycoreutils-python-utils`,
+`coreutils` and `util-linux`. Install missing tools
+through the normal administrator package workflow; do not disable SELinux.
 A compatible complete V1/V2 reference does not need new enrollment. The normal
 user cannot modify the root-owned reference, threshold, keys, models or opt-in.
 The graphical helper is root before PAM; it supplies the selected PAM_USER, not a
@@ -41,7 +51,8 @@ sudo bash packaging/kde/install.sh "$PWD"
 ```
 
 The updated helper must also be installed (the KDE installer installs it). The
-probe is a root-only diagnostic executable, without setuid/capabilities; its
+probe is an ordinary executable without setuid/capabilities. Display-manager
+checks require root; the special `kde` mode permits only its own normal real UID. Its
 successful exit grants no operating-system session/command. Its default PAM
 conversation supplies no passwords. The explicit development `--password` mode
 answers the original PAM password prompt with masked terminal input, never from
@@ -51,7 +62,7 @@ Fedora's existing `xdm_t` rules already permit reading/writing/ioctls on
 `v4l_device_t`. The shipped small SELinux module adds only `chr_file map` for that
 same source/target so bounded MMAP capture works. SELinux stays enforcing; no
 permissive/unconfined domain, blanket audit2allow or home/key/network access is
-added. Only the standalone root-only probe receives a persistent `xdm_exec_t`
+added. Only the standalone diagnostic probe receives a persistent `xdm_exec_t`
 entrypoint label so tests run in the same domain as the actual display-manager
 helper. Production verifier/worker retain their existing contexts and native
 worker sandbox. This policy was checked against this Fedora version; other
@@ -194,7 +205,7 @@ production references/helpers/PAM and desktop sessions remain untouched.
 KScreenLocker6.7 runs its PAM worker as the logged-in user, using the `kde`
 service. It does not run the root display-manager verifier. See the upstream
 [PAM worker](https://github.com/KDE/kscreenlocker/blob/Plasma/6.7/greeter/pamauthenticator.cpp).
-The optional `hello-lock-verify` launcher is installed root-owned mode4755 on
+The optional `hello-lock-verify` launcher is installed root-owned mode 4755 on
 the ordinary system filesystem. It accepts no arguments or target identity:
 the kernel real UID must be a normal account, and its protected root-private
 `pam-kde.enabled` must contain the exact opt-in magic. It validates the fixed

@@ -14,9 +14,11 @@ systemd units, fingerprint integration or authentication interfaces.
 6. Test native alignment, grayscale processing, worker isolation, storage migration
    and GUI; measure functional latency/CPU/RSS without inventing population accuracy.
 
-These implementation steps are completed. Calibration on representative consented
+These implementation steps are completed. The audit preceded optional PAM
+integration; the table below includes the current authentication scope. Detailed
+test counts and timings below are dated measurements, not current CI totals. Calibration on representative consented
 NIR data, owner recognition across sessions and PAD qualification remain external
-validation steps. No such dataset was supplied. The default 0.80 diagnostic floor
+validation steps. No such dataset was supplied. The default0.80 verification floor
 remains explicitly provisional rather than a calibrated authentication threshold.
 
 ## Existing architecture and actual failure causes
@@ -30,7 +32,7 @@ remains explicitly provisional rather than a calibrated authentication threshold
 | Comparison | Cosine dot product, model/dimension binding, one explicitly selected reference, no search across accounts |
 | Storage | Explicit XChaCha20-Poly1305 reference encryption, Argon2id-derived key, UID binding, private directories/files and bounded atomic access; model IDs and exemplars encrypted |
 | Threshold | Experimental default/floor 0.80, adjustable upward in GUI; no representative sensor calibration was present |
-| Authentication | `hello-pam` is a readiness stub (`IMPLEMENTED=false`), not working PAM authentication. Existing privileged-authentication gates remain disabled; production PAM was not changed |
+| Authentication | Default build/readiness remains diagnostic; explicit sudo-pam/kde-pam features now provide experimental sudo, KDE login and self-account unlock through the protected verifier |
 
 The input contract was checked against [OpenCV 4.13's actual implementation](https://github.com/opencv/opencv/blob/4.13.0/modules/objdetect/src/face_recognize.cpp).
 Applying ArcFace-style `(pixel-127.5)/127.5` normalization here would violate SFace's
@@ -71,8 +73,9 @@ identity scores. It takes the median of those three similarities and the full
 template centroid similarity; both must pass. It also requires a compatible
 stored shape among the selected references. Selection never chooses the highest
 similarity. One favorable exemplar cannot override the other two or the centroid.
-All existing temporal owner/turn/return checks, distinct frames, cancellation and
-bounded transition retry policy remain in force.
+Distinct frames, cancellation and identity checks remain in force. The optional
+motion diagnostic retains turn/return rules; normal verification now uses the
+passive three-frame path described in the follow-up below.
 
 V1 encrypted templates retain their original scoring. V2 loading requires full
 model-compatible exemplars/geometry and validates the centroid against the
@@ -92,7 +95,7 @@ inference checks ROI quality and valid geometry before alignment/descriptor work
 successful worker replies must contain both valid quality and geometry.
 
 YuNet now retains >=0.75 presence candidates to avoid silently hiding a weaker
-second face. **A descriptor still requires exactly one face and confidence >=0.90.**
+second face. **A descriptor still requires exactly one face and confidence >= 0.90.**
 Monochrome CLAHE also retries a single low-confidence detection, preserving any
 multi-face outcome. Native boxes intersecting the image are clipped to the image;
 border quality still rejects cropped references. Original descriptor pixels are

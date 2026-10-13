@@ -36,6 +36,8 @@ jobs:
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Formatting
         run: cargo fmt --all --check
+      - name: Documentation links and headings
+        run: python3 tools/check-docs.py
       - name: Qualification recorder boundaries
         run: python3 -B -m unittest discover -s tests -p 'test_*.py'
       - name: Clippy

@@ -1,5 +1,50 @@
 # Executed validation
 
+## Current evidence summary — reviewed 2026-10-13
+
+| Area | Latest recorded evidence | Remaining limitation |
+| --- | --- | --- |
+| Fedora target | Lenovo Yoga Slim 7 14IMH9, Fedora 44 KDE/Wayland; GREY/IR and YUYV capture, cancellation/reopen and scoped emitter restoration tested | Other devices, spectral validation, suspend/unplug and long-duration coverage incomplete |
+| GUI face workflow | Owner-confirmed detection, named enrollment and passive recognition; encrypted V1/V2 storage and synthetic failure regressions | No representative genuine/impostor accuracy study |
+| sudo | Real owner match and original password fallback tested; protected UID reference and fixed verifier installed | Explicit experimental opt-in; no validated PAD |
+| KDE login | Owner activation minima0.868/0.880 and AUTH/ACCT/SETCRED0; owner subsequently reported real login works | Plasma Login Manager confirmed; actual SDDM login not measured here |
+| KDE unlock | Own-UID launcher and real unprivileged password fallback tested; owner subsequently confirmed Win + L works | No independent unlock latency/accuracy/attack report |
+| Software | Recorded default/feature Rust, Python, rendering, worker and privileged isolated-dispatch checks passed at their milestones | Counts below belong to each recorded commit, not one current aggregate |
+| Dependencies | Recorded audit snapshots have two unmaintained-dependency advisories and fail the strict gate | No fresh audit result is inferred from those snapshots |
+| Release qualification | Functional implementation and owner confirmations | Representative NIR FAR/FRR, PAD, independent privilege/key review, broad VM/RPM lifecycle and other desktops remain open |
+
+Current usage and activation are in [scope](index.md), [inference](inference.md),
+[sudo](sudo-integration.md) and [KDE](kde-login.md). This document preserves evidence;
+it is not the installation guide.
+
+## Documentation consistency review — 2026-10-13
+
+Reviewed all repository Markdown guides against the current feature gates,
+installed integration scripts, CLI help and source boundaries. Updated current
+README, architecture, enrollment/authentication flow, security/storage scope,
+installation/rollback and test entry points. Superseded inference development
+notes were retained in [the archive](inference-history.md), with current usage
+in [inference](inference.md) and a central [documentation index](index.md).
+Historical measurements below were preserved rather than reinterpreted as current
+population/security evidence. Dated dependency snapshots were not presented as
+a fresh audit.
+
+The standard-library documentation checker validated all 23 Markdown files' local
+file/image links and heading fragments. Its 2 regression tests and the complete
+Python suite passed (28 tests). `git diff --check` passed. The same link check was
+added to CI. External URLs were not fetched, and no camera, PAM configuration,
+biometric reference or runtime code was changed for this documentation review.
+No full Rust rebuild or new physical/security qualification is claimed.
+
+## Historical milestone log
+
+All entries below describe their own milestone. Earlier disabled-PAM states,
+thresholds, head-turn requirements, acquisition limits and unsuccessful activation
+attempts are historical and may be superseded by later entries. Test totals must
+not be added together; hardware and synthetic tests establish different things.
+Ignored local `work/` paths identify workstation artifacts, not files distributed
+with a source checkout. No missing benchmark or attack result is inferred.
+
 ## Native Fedora and physical cameras — 2026-10-11
 
 Execution restrictions were removed and the locked dependency graph was fetched.
@@ -788,7 +833,7 @@ owner, held-out IR error rates and print/video attack resistance remain unverifi
 
 Person capture now retains one bounded camera and loaded worker per operation;
 previous per-attempt reopening and stable-global-exposure descriptions are
-superseded by [the current acquisition design](inference.md#howdy-based-continuous-acquisition--2026-10-11).
+superseded by [the current acquisition design](inference-history.md#howdy-based-continuous-acquisition--2026-10-11).
 
 
 ## Patient scanning and stable instructions — 2026-10-11
@@ -1116,7 +1161,7 @@ completed AUTH/ACCT/SETCRED0 using masked account password. Detector/marker were
 restored; neither a password nor raw biometric data was saved. No desktop was
 locked/restarted during tests. SELinux remains enforcing without added policy.
 
-Updated module, launcher(mode4755), probe, manager and `activate-lock.sh` were
+Updated module, launcher(mode 4755), probe, manager and `activate-lock.sh` were
 installed. A real activation attempt as the ordinary user returned AUTH7 in its
 first strict scan; no production locker PAM change or new opt-in remained.
 Owner identity/presence in this agent-triggered scan is not established. Existing

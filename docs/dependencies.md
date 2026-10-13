@@ -12,7 +12,7 @@ The run checked 600 lockfile dependencies and reported **zero known vulnerabilit
 entries and two maintenance advisories**. This is not a clean strict audit or a
 guarantee that there are no vulnerabilities.
 
-| Locked dependency | Advisory | Current consequence |
+| Locked dependency | Advisory | Consequence at the recorded audit |
 |---|---|---|
 | `bincode` 2.0.1 | [RUSTSEC-2025-0141](https://rustsec.org/advisories/RUSTSEC-2025-0141.html) | Unmaintained dependency in the Slint graph; no patched version listed |
 | `ttf-parser` 0.25.1 | [RUSTSEC-2026-0192](https://rustsec.org/advisories/RUSTSEC-2026-0192.html) | Unmaintained font-parsing dependency in the GUI/windowing graph; no patched version listed |
@@ -20,7 +20,7 @@ guarantee that there are no vulnerabilities.
 These are informational maintenance advisories, not reports of an identified
 exploit in Linux Hello. They still matter for a security-oriented project and are
 recorded as release blockers. `cargo audit --deny warnings` is intentionally strict
-and currently fails until the dependency graph is remediated or a separately
+and failed in the recorded audit; release qualification remains blocked until the dependency graph is remediated or a separately
 reviewed, narrowly scoped policy decision is made. No ignore rules are added to
 make it pass.
 
@@ -63,5 +63,5 @@ has changed; the 600-dependency audit count above describes the previous graph.
 
 The expanded 609-dependency lockfile was audited on 2026-10-11: zero known
 vulnerability entries and the same two unmaintained advisories. Strict audit
-still fails; `cargo deny --locked check licenses sources bans` passes with warnings.
+failed in this snapshot; `cargo deny --locked check licenses sources bans` passes with warnings.
 No suppressions were introduced.

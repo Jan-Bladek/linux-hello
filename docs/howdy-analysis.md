@@ -58,13 +58,15 @@ falls back to CLAHE, while alignment and embeddings retain original pixels.
 Quality now separates whole-camera signal from detected-face usability, black
 clipping from overexposure, and relative detail from absolute edge strength.
 The UI explains the observed cause. Exact limits and bounded worker/camera
-lifecycle are documented in [inference.md](inference.md#howdy-based-continuous-acquisition--2026-10-11).
+lifecycle are documented in [current inference lifecycle](inference.md#continuous-capture-and-worker-isolation).
 
-The owner similarity floor 0.80, stored-exemplar and shape gates, distinct frames,
-randomized turns, returns and two-frame owner baseline remain mandatory. Existing
-encrypted templates retain compatibility. No photos or embeddings are written by
+The owner similarity floor 0.80, stored-exemplar and shape gates and distinct frames
+remain in force. Normal recognition now requires three suitable matching frames
+without turns; randomized turns/returns/baseline belong only to the separate
+motion diagnostic. Existing encrypted templates retain compatibility. No photos or embeddings are written by
 capture; encrypted reference saving remains an explicit separate action.
-No login/PAM/Howdy system configuration was changed.
+This acquisition refactor did not change PAM or install Howdy. Later optional
+sudo/KDE integration is documented separately in [scope](index.md).
 
 ## Verification and remaining validation
 
@@ -75,9 +77,9 @@ Explicit pinned-model tests run original face → blank → monochrome checkerbo
 stale-state clearing and successful normal exit. The real camera test checks
 continuous capture and verified cleanup without saving pixels.
 
-A user-facing owner scan and separate-person/printed-photo/video trials remain
-necessary. No consented held-out IR dataset or evaluated PAD model is available.
+The owner subsequently confirmed GUI recognition, sudo, KDE login and Win + L.
+Separate-person/printed-photo/video trials and representative data remain necessary. No consented held-out IR dataset or evaluated PAD model is available.
 Neither Howdy's challenge nor our five-point geometry provides depth, dense 3D
-shape or proof of spoof resistance. Authentication readiness therefore remains
-false. The numerical acquisition heuristics and identity floor need empirical
-calibration before any system-login use.
+shape or proof of spoof resistance. Diagnostic qualified-readiness flags remain false. Experimental PAM opt-ins now
+exist, but numerical acquisition heuristics and identity floor still require
+empirical calibration before a security-qualified authentication release.

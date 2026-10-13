@@ -1,283 +1,142 @@
 # Linux Hello
 
-A Rust application for private, local biometrics on Fedora, with V4L2 camera
-diagnostics, Slint enrollment/recognition and an optional experimental sudo
-integration. **This is a development release with unvalidated presentation attack
-protection and NIR FAR/FRR. Preserve password fallback.**
+Linux Hello is a Rust application for local facial enrollment and verification on
+Fedora Linux. It includes a Slint GUI, V4L2 camera diagnostics and optional PAM
+integrations for sudo, KDE login and unlocking after Win + L.
 
-Default builds provide camera diagnostics. Explicit features add pinned CPU
-models, encrypted multi-frame enrollment and passive recognition. sudo opt-in
-requires a separately installed root-owned verifier and protected enrollment;
-ordinary installation does not enable PAM. Model weights and telemetry are not
-included in the repository.
+**Development release: presentation attack detection (PAD) and representative
+infrared FAR/FRR are not validated. Password fallback remains available.**
+Models, camera images, biometric templates and keys are not distributed in this
+repository. No cloud processing or runtime model download is required.
 
-![Actual Slint interface, rendered by the headless software-renderer test](docs/screenshots/overview.png)
+![Slint interface rendered by the software-renderer test](docs/screenshots/overview.png)
 
-## What works
+## Current status
 
-| Component | Implemented behavior | Remaining validation or work |
+| Area | Implemented behavior | Limitations |
 | --- | --- | --- |
-| `hello-camera` | V4L2 enumeration, capability/format/size inspection, IR hints, on-demand MMAP capture, bounded asynchronous queue, cancellation, same-device reconnect, GREY/RGB24/YUYV preview; basic Lenovo YUYV/GREY capture and reopen tested | Long-duration hardware stability, IR illumination, multi-planar/compressed formats, other Fedora devices |
-| `hello-cli` | JSON device diagnostics, bounded capture, tested SIGINT/reopen, Lenovo qualification probe, optional isolated face probe, quality/control inspection and model evaluation, D-Bus status, security report, fprintd status | Full Lenovo shutter/emitter/suspend/desktop qualification |
-| `hello-settings` | Native Slint overview, device selection, actual local preview, optional isolated face check, session/multi-sample references and encrypted persistence, stop/timeout, diagnostics, security information and daemon connectivity | Fedora GNOME/KDE/Hyprland usability and accessibility testing |
-| `hello-core` | Explicit security status and one-shot diagnostic verification state machine | Privileged authorization protocol and evaluated PAD evidence |
-| `hello-face` | Bounded quality statistics, normalized embeddings, multi-sample template aggregation, model-bound matching, validated pipeline and optional CPU YuNet/SFace detection/alignment/ONNX inference | Model/data provenance review, accuracy/latency/memory/IR/PAD evaluation |
-| `hello-storage` | XChaCha20-Poly1305 authenticated envelopes, owner binding, zeroizing secret values, Linux descriptor-relative atomic save/load/delete | Trusted key provisioning, security review and TPM integration; GUI diagnostic references use a separate passphrase |
-| `hello-daemon` / `hello-ipc` | Real read-only D-Bus service, bus-derived requester UID, bounded client calls, concurrency tests | Trusted enrollment and authentication; camera frames never transit this service |
-| `hello-fingerprint` | Real fprintd reader discovery and caller's enrolled-finger status | Fingerprint enrollment/removal UI; use existing fprintd tools meanwhile |
-| `hello-pam` / `hello-sudo` | Default readiness report; explicit features export a sudo-only PAM adapter, root verifier, protected encrypted import, password fallback and rollback | Experimental opt-in; PAD and representative NIR FAR/FRR unvalidated; no login/sshd integration |
-| Packaging / CI | RPM specification, hardened manual-start diagnostic service, D-Bus policy, release gates and CI | Fedora RPM install/remove, SELinux and disposable-VM validation |
+| Camera | V4L2 enumeration, GREY/RGB24/YUYV capture, preview, cancellation and scoped IR emitter control on the tested Chicony firmware | Other hardware, suspend/unplug and long-duration testing remain incomplete |
+| Face pipeline | Pinned CPU YuNet detection, five-landmark alignment and 128-dimensional SFace embeddings through an isolated OpenCV worker | RGB-trained models are not qualified for a representative NIR population |
+| Enrollment | Eight quality-checked samples, named local reference, encrypted save/load, versioned V1/V2 templates | One GUI reference; labels are not OS account identities |
+| Verification | Three distinct suitable frames, centroid/exemplar/geometry checks, provisional minimum cosine threshold 0.80 | No mandatory head turns; no validated PAD or calibrated FAR/FRR |
+| sudo | Protected root-owned reference, UID-bound verifier, original password fallback | Separate experimental opt-in |
+| KDE login | Plasma Login Manager/SDDM PAM integration with independent account/service opt-in | Owner confirmed real Plasma login; SDDM is implemented but not physically validated here |
+| KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE; other lockers are not integrated |
+| Diagnostic daemon | Read-only D-Bus status and bus-derived requester UID | No enrollment or authentication authority |
+| Fingerprints | fprintd discovery and enrolled-finger status | Enrollment/removal UI is not implemented |
+| Packaging | Diagnostic RPM specification and manual optional PAM installers | RPM lifecycle and broad desktop/security qualification remain release gates |
 
-The camera backend supports single-planar streaming capture devices. Unsupported
-devices remain visible with an explanation. A monochrome format or an "IR" name
-is a hint, never liveness evidence. Camera capture starts only on an explicit user action and stops after that operation.
+Default builds provide diagnostics. Explicit features enable inference, the GUI
+face workflow and PAM adapters. Installing diagnostic packages does not enable
+PAM, start services or select an authselect profile. See the
+[documentation index and scope](docs/index.md).
 
-## Build and run on Fedora
+## Build and run
 
-Use the exact Rust toolchain in `rust-toolchain.toml` and dependency graph in
-`Cargo.lock`. See [installation](docs/installation.md) for Fedora build dependencies
-and packaging. Ordinary diagnostics need your session's existing camera access,
-not root.
+Use the pinned toolchain in `rust-toolchain.toml` and `Cargo.lock`. Install the
+Fedora development libraries in [installation](docs/installation.md).
 
 ```sh
 cargo build --locked --workspace
 cargo run --locked -p hello-cli -- cameras
 cargo run --locked -p hello-cli -- security
-cargo run --locked -p hello-cli -- capture --device /dev/video0 --frames 10 --timeout 10
-cargo run --locked -p hello-cli -- probe --device /dev/video0
-cargo run --locked -p hello-cli -- fingerprints
 cargo run --locked -p hello-settings
 ```
 
-Choose the device path from `cameras`; `/dev/video0` above is only an example.
-Capture and probe report metadata and discard pixels. They create no image files.
-Optional local YuNet/SFace inference is documented in [inference diagnostics](docs/inference.md);
-models are fetched only by an explicit utility command, and are never bundled.
-The optional CLI and its `hello-face-worker` must remain side by side. See
-[IR results](docs/ir-qualification.md) and [model review/evaluation](docs/model-evaluation.md).
+Choose the device from `cameras`; device numbers are host-specific. The tested
+Lenovo uses `/dev/video2` for GREY/IR. The GUI starts with its camera off and runs
+as the ordinary desktop user. No camera frames are sent through D-Bus.
 
-Read-only vendor-control inspection is available through
-`timeout 30s python3 tools/inspect-uvc-controls.py --device /dev/video2`.
-It reports declared UVC extension-unit lengths and support flags without capture
-or control writes. Scoped IR mode is now available using
-`hello capture --device /dev/video2 --frames 90 --timeout 15 --ir-emitter` on the
-tested Chicony firmware, with verified restoration when capture ends.
-
-Before running model evaluation, use `hello face-dataset-check --manifest PATH`
-with the optional face build to validate all dataset files and session/split metadata.
-It produces aggregate diagnostics without loading models or performing inference.
-The GUI starts with its camera off. Select **Odśwież**, open **Osoba**, choose a
-device, and select **Podgląd kamery**. **Stop**, the frame cap, or the timeout ends
-capture. For the tested IR camera, select **Doświetlenie podczerwienią (IR)** before starting;
-its prior mode is restored when preview ends. Unsupported modules return an error.
-Refresh queries fprintd and daemon diagnostics independently of capture.
-
-For the optional GUI face check, build the GUI and its sibling worker together:
+For face enrollment and recognition, install the documented OpenCV prerequisites,
+explicitly fetch pinned models, and build GUI plus its adjacent worker:
 
 ```sh
-cargo build --locked --release -p hello-cli -p hello-settings --features hello-settings/face-diagnostics
+python3 tools/fetch-face-models.py --output work/inference/models
+cargo build --locked --release -p hello-cli -p hello-settings \
+  --features hello-settings/face-diagnostics
 LINUX_HELLO_MODELS="$PWD/work/inference/models" target/release/hello-settings
 ```
 
-With explicitly fetched pinned models available, choose **Odśwież**, open **Osoba**
-(previously Camera), select the camera and optionally IR illumination. Stop preview
-before adding/recognizing. Model directory and Check face / Compare 3 samples /
-Remember face are under **Ustawienia → Diagnostyka kamery i modeli**. A default GUI
-build does not expose optional face controls. Capture initializes its isolated
-worker before the camera. Person scanning and recognition keep one bounded camera,
-IR lease and loaded worker throughout the operation, then join capture, restore
-IR and reap the worker before publishing a result. Legacy single-probe diagnostics
-release the camera before inference.
-Stop or closing the window cancels and awaits cleanup.
+The download output must be a new directory. Keep `hello-face-worker` next to
+`hello-settings` and the optional `hello` CLI. Exact artifacts, preprocessing and
+worker limits are in [inference](docs/inference.md).
 
-The current accuracy refactor, v2 templates, IR quality findings and measured
-functional performance are documented in [accuracy improvements](docs/accuracy-improvements.md).
-New enrollments begin with three frontal anchors before pose variation. Old v1
-references remain usable with their original scoring; re-enroll to obtain v2.
+## Scan, name and recognize
 
-To scan, label and recognize a face:
+1. In **Osoba**, select the camera and, on supported hardware, IR illumination.
+   Close preview before enrollment or verification.
+2. Choose **Skanuj nową twarz**. Capture eight valid samples following the position
+   instructions. Three frontal anchors come before moderate pose variation.
+3. Enter a name and choose **Podpisz twarz**. The name is a local label.
+4. Choose **Skanuj i rozpoznaj** and look straight at the camera. Three suitable
+   matching frames are required; normal verification does not require head turns.
+5. Use **Zapisz / wczytaj** with a separate reference passphrase to retain the
+   encrypted reference across restarts. Saving and loading are explicit.
 
-1. In **Osoba**, choose **Skanuj nową twarz**. One explicit click starts up to eight
-   quality-accepted captures. Follow each position instruction; a three-second pause
-   at each new position gives time to move. The scanner shows acquired camera frames,
-   a positioning oval, an animated scan line and accepted-sample progress.
-2. After all eight captures, enter the person's name and choose **Podpisz twarz**.
-   Names allow 1–64 characters and at most 256 UTF-8 bytes.
-3. Choose **Skanuj i rozpoznaj** and look at the camera. Three fresh, suitable
-   frames must all match the saved person; no head-turn instructions are required.
-   The result shows **Rozpoznano: [name]** only after all three pass. Camera/IR mode
-   must match the reference. The separate **Test ruchu głowy (diagnostyka)** in
-   Settings retains the optional five-pose experiment.
-4. **Stop** cancels the active capture/pause. **Kontynuuj skan** resumes accepted
-   samples after rejection or cancellation. **Anuluj dodawanie** discards the new
-   set and restores the previous person, if present.
+**Stop** cancels capture and awaits cleanup. **Kontynuuj skan** resumes accepted
+samples; **Anuluj dodawanie** preserves the previous reference. A new GUI scan
+never silently changes the separately protected PAM reference. Complete existing
+V1/V2 references remain supported; re-enroll to obtain V2 pose-aware scoring or
+when changing incompatible models. Details are in [biometrics](docs/biometrics.md)
+and [inference](docs/inference.md).
 
-The scanner oval is a positioning guide, not measured face bounds or liveness.
-The preview follows a continuous bounded camera stream throughout person scanning
-and recognition. Analysis takes successive fresh frames from a single latest-frame
-buffer; it does not keep an image history.
-The displayed frame is cleared when the job ends; no image is saved. Enrollment
-permits up to eight quality attempts within 15 seconds per position, subject to
-the session time and frame budgets.
+## Optional system authentication
 
-The GUI holds one person reference. **Dodaj inną twarz** scans its replacement;
-the previous reference stays intact until eight accepted samples finish. The new
-face must be labelled before GUI recognition. **Ustawienia → Nazwa twarzy** renames
-without recapture. Names are local labels, not verified identities/system accounts;
-control/bidi formatting characters and oversized names are rejected. Names are
-not added to CLI evaluation reports.
-
-To retain the person after restart:
-
-1. Choose **Zapisz / wczytaj** or open **Ustawienia**.
-2. Enter a separate reference passphrase of at least 12 characters twice, then
-   **Zapisz osobę**. Name and biometric template are encrypted together.
-3. After restart, enter the passphrase in the first field and choose **Wczytaj osobę**.
-   Return to Osoba and select the original camera/IR mode.
-4. After renaming, save again to persist the name. **Usuń z pamięci** affects memory;
-   **Usuń zapisany plik** removes the encrypted reference and clears memory.
-
-Storage remains one authenticated encrypted template and public salt in
-`$XDG_DATA_HOME/linux-hello/diagnostic-reference`, or
-`$HOME/.local/share/linux-hello/diagnostic-reference`. No photograph, plaintext
-name sidecar, key, passphrase, raw embedding file or score history is saved.
-Persistence is explicit; startup opens neither camera nor saved reference.
-Wrong passphrases cannot overwrite an existing file. Forgotten passphrases require
-removal and a new reference. Old templates remain readable for comparison, but
-strict recognition requires eight samples containing landmark geometry and
-individual exemplars. V1 references with these fields remain supported; V2
-requires a new scan to obtain frontal anchors and pose-aware scoring. No automatic upgrade or deletion of old references occurs.
-
-Ustawienia → **Experimental recognition** adjusts cosine threshold in [0.80, 1].
-Default **0.80** is a conservative provisional policy, not camera calibration.
-Each accepted acquisition must meet both centroid and exemplar median similarity.
-V2 selects three references by nearest measured pose before scoring; V1 retains
-the original median over all references. A nearest
-stored shape must also satisfy six normalized landmark proportions (mouth/eye
-width, eye-to-nose, eye-to-mouth, nose-to-mouth, eye/face width, face aspect ratio).
-Geometry has provisional tolerances; five points are not a dense 3D shape model.
-Frontal identity failures reject the attempt. During each turn at most two
-below-threshold/shape-mismatch frames may be discarded and retried; a third
-rejects the attempt. Neither discarded frame supplies owner or movement evidence.
-Both stable frames confirming each turn must pass the original identity/shape
-gates. Every owner-validated observation contributes to the final minimum, so a
-stricter user threshold cannot be bypassed by choosing only a high median. Wrong pose or transient image quality is retried up to 16 times per stage,
-within a 15-second stage budget and a bounded fresh-frame search. Stop remains available during
-the three-second pose pause, 0.8-second retry pause and acquisition. The whole operation
-is also limited by camera/worker time and frame budgets. Ordinary diagnostic
-comparison remains three captures and does not produce a named recognition result.
-
-Normal recognition collects three suitable, distinct owner-matching frames while
-you look at the camera. It does not claim a motion challenge or validated PAD.
-Stored V1/V2 references remain compatible. The following baseline/turn rules apply
-only to the optional diagnostic motion test.
-
-The first stage establishes your natural baseline from two stable owner-matching
-captures within five seconds, allowing brief unusable IR frames between them;
-hold your head still rather than turn. The scanner shows measured turn
-progress only during turns, warns about the wrong direction and distinguishes
-quality rejection from movement measurement.
-IR captures warm up once and skip dark frames without requiring consecutive
-frames to have equal brightness. Quality is measured on the detected face, so
-a dark IR background does not reject an otherwise readable face. See the
-[Howdy source analysis and acquisition changes](docs/howdy-analysis.md).
-The randomized motion check measures nose displacement along the eye axis,
-normalized by eye separation, and requires two opposite turns and return to the
-starting pose. Exact repeated frames and changed references abort the check.
-It can reject a stationary image or rigid translation/in-plane rotation, but
-**is not evaluated presentation attack detection (PAD)**: replay video, masks,
-projective movement of a print/display and injected video remain concerns. No
-blink detection, depth sensor, dense mesh or evaluated RGB/IR PAD model is present.
-Do not treat an IR emitter as proof of liveness. Recognition remains experimental;
-privileged system login remains disabled. [NIST PAD evaluation](https://pages.nist.gov/frvt/html/frvt_pad.html)
-describes why spoof resistance requires separate evaluation. Test saved-person
-and consented other-person trials on the actual camera before judging reliability.
-
-Ustawienia → **Manual recognition trials** provides user-labelled saved-person and
-consented other-person trials. Counts separate recognition, nonrecognition,
-ambiguity and acquisition failure; cancellation does not count. At most 1000
-outcomes stay in memory until Clear trials or window close. Changing the reference
-(including its name) or threshold requires Clear trials before new acquisition.
-These are informal counts, not FAR/FRR estimates or a calibration dataset.
-
-For development IPC without installing or enabling a service, run inside an
-isolated session bus:
+Provision sudo first using [sudo installation and recovery](docs/sudo-integration.md).
+KDE integrations reuse that account's protected reference without a new face scan
+for enrollment. Each integration is enabled independently after its live checks.
+Run these installed scripts as the normal desktop user:
 
 ```sh
-dbus-run-session -- bash
-# In that shell:
-cargo run --locked -p hello-daemon -- --session &
-cargo run --locked -p hello-cli -- status --session
-# Stop the background daemon before leaving the shell.
+# Import the encrypted GUI reference and enable sudo:
+/usr/local/libexec/linux-hello-sudo/enroll-and-enable.sh
+# Enable KDE display-manager login:
+/usr/local/libexec/linux-hello-sudo/activate-kde.sh
+# Enable KDE session unlocking after Win + L:
+/usr/local/libexec/linux-hello-sudo/activate-lock.sh
 ```
 
-System-bus installation is optional and has no authority to authenticate in this
-version. A session-bus daemon is explicitly diagnostic, never an authentication
-authority. No system authentication files are changed by these commands.
+The scripts are available only after the corresponding manual installation.
+The GUI reference passphrase is distinct from the account password. Never put
+passwords, keys or templates into shell arguments, environment variables or Git.
+For KDE login, select the account and submit an empty password field while facing
+the camera. For Win + L, show the unlock screen; if scanning does not start,
+submit the empty field. Password fallback remains available. KWallet can request
+its own password. See [KDE installation, activation and rollback](docs/kde-login.md).
 
-## Verify
+The supported PAM services are `sudo`, `sudo-i`, `plasmalogin`, `sddm` and `kde`.
+GDM, sshd, su, tty login, Polkit agents and other lockers are not integrated.
+The diagnostic daemon's disabled readiness flags do not report the activation
+state of the separate experimental PAM adapters.
+
+## Development checks
 
 ```sh
-cargo fmt --all -- --check
+cargo fmt --all --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
+python3 -B -m unittest discover -s tests -p 'test_*.py'
 bash tests/integration/run-session.sh
-cargo audit
-cargo deny --locked check advisories licenses sources
+python3 tools/check-docs.py
 cargo build --locked --workspace --release
+cargo audit --deny warnings
+cargo deny --locked check licenses sources bans
 ```
 
-The hardware test is ignored by default and must be explicitly run with a real
-device. Read [hardware support](docs/hardware-support.md) before testing. Automated
-camera and biometric tests use synthetic inputs; they do not measure physical
-attack resistance. The full test inventory and actual execution results are in
-[validation](docs/validation.md).
+Strict dependency auditing has known maintenance blockers in the recorded
+[audit snapshot](docs/dependencies.md); it must not be reported as a clean gate.
+Default tests never acquire a camera or install PAM. Optional inference, hardware
+and privileged dispatch tests have explicit entry points in [tests](tests/README.md).
+[Validation](docs/validation.md) separates current evidence from historical results.
 
-To continue on a physical Linux desktop, run `python3 tools/qualify-linux.py`
-for a recorded preflight, then `python3 tools/qualify-linux.py --verify` for
-software checks. Add `--device /dev/videoN` only after selecting the intended
-camera to run bounded capture/release/reopen. See the
-[qualification procedure](docs/hardware-support.md#lenovo-qualification-procedure).
+## Documentation and licensing
 
-## Architecture and project status
+Start with the [documentation index](docs/index.md), [architecture](docs/architecture.md),
+[authentication flow](docs/authentication-flow.md), [threat model](docs/threat-model.md)
+and [security policy](SECURITY.md). Contributing instructions are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-Start with the [architecture](docs/architecture.md), [threat model](docs/threat-model.md),
-[authentication flow](docs/authentication-flow.md), and [biometric limitations](docs/biometrics.md).
-[Upstream research](docs/research.md) records API and licensing decisions.
-[Dependency status](docs/dependencies.md) records unresolved maintenance advisories;
-the [research baseline](docs/research.md#version-baseline) lists exact direct versions.
-
-Phase 1 and the Phase 2 software are implemented. Basic YUYV/GREY capture,
-cancellation and reopen passed on the physical Lenovo; full hardware qualification
-is pending. Selected non-privileged Phase 3–5 foundations are implemented; face
-enrollment, evaluated recognition, PAD, trusted authorization and Phase 6 PAM
-integration remain incomplete. Phase 7 release gates have not been met.
-
-No production security claims or biometric accuracy statistics are made.
-Installation never enables PAM, changes disk encryption, or silently changes
-login configuration. See [SECURITY.md](SECURITY.md) and the recovery instructions
-before any future authentication integration.
-
-## Licensing
-
-Shared crates are Apache-2.0 ([LICENSE](LICENSE)). The Slint settings application
-is GPL-3.0-only ([LICENSE-GPL-3.0](LICENSE-GPL-3.0)); this project chooses Slint's
-GPL licensing option. Distributing GUI binaries requires corresponding source
-and compliance with GPL-3.0. No pretrained model license is implied by the code
-license, and no weights are distributed.
-
-## Optional experimental sudo integration
-
-A separate root-owned PAM adapter/helper is available behind explicit `sudo-pam`
-and `sudo-face` features. Installation leaves PAM unchanged; root-authorized
-reference import and live checks precede sudo-only activation. Existing password
-fallback is retained. PAD and NIR FAR/FRR are not validated. See
-[installation, activation and rollback](docs/sudo-integration.md).
-
-## Optional KDE login integration
-
-The explicit `hello-pam/kde-pam` feature also supports root Plasma Login Manager
-and SDDM helpers with independent root-only per-account/service opt-in. Activation
-tests the proposed PAM stack in Fedora’s enforcing SELinux domain before an
-atomic change, preserving password, wallet, account and session hooks. See
-[KDE login installation, testing and rollback](docs/kde-login.md).
+Shared crates are Apache-2.0 ([LICENSE](LICENSE)); the Slint GUI is GPL-3.0-only
+([LICENSE-GPL-3.0](LICENSE-GPL-3.0)). GUI distribution requires corresponding source
+and notices. Code licensing does not establish pretrained weight/data rights;
+no weights are distributed. Windows Hello-equivalent security is not claimed.

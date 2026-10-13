@@ -23,7 +23,9 @@ Lenovo specifies an FHD camera with IR, an electronic shutter and a ToF sensor f
 | Unsupported inputs | Metadata-only nodes, multi-planar streams, MJPEG-only cameras, Bayer/raw MIPI pipelines and proprietary depth formats fail explicitly. |
 | Other platforms | Windows/macOS builds return `UnsupportedPlatform`; there is no fake camera fallback. |
 
-All raw frame ownership stays inside the calling process; there is no camera-frame D-Bus endpoint. Frame `Debug` excludes pixels, and owned raw buffers are zeroed when dropped. Preview conversions create temporary RGB buffers that their caller must handle appropriately. This is not a guarantee against swap, process memory inspection or kernel buffer remanence. No frame is written to disk by this crate. No IR emitter controls or device firmware are modified.
+All raw frame ownership stays inside the calling process; there is no camera-frame D-Bus endpoint. Frame `Debug` excludes pixels, and owned raw buffers are zeroed when dropped. Preview conversions create temporary RGB buffers that their caller must handle appropriately. This is not a guarantee against swap, process memory inspection or kernel buffer remanence. No frame is written to disk by this crate. Default capture does not modify emitter controls. Explicit scoped IR capture
+changes only the whitelisted face-mode control and restores it with readback;
+no firmware is flashed. See [IR qualification](ir-qualification.md).
 
 The mmap adapter uses the generated ABI types and ioctl constants in `v4l` 0.14.0. Its small unsafe boundary is confined to `crates/hello-camera/src/linux.rs`, with ownership and bounds checks before copying camera buffers. It uses `File` cleanup rather than the upstream mmap stream destructor, which can panic for some cleanup errors. Reference APIs: [v4l 0.14.0](https://docs.rs/v4l/0.14.0/v4l/), [Linux streaming mmap](https://docs.kernel.org/userspace-api/media/v4l/mmap.html), [V4L2 capabilities](https://docs.kernel.org/userspace-api/media/v4l/vidioc-querycap.html).
 

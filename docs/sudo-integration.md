@@ -5,15 +5,16 @@ worker, eight-sample V1/V2 templates, alignment and three-frame passive 1:1
 verification. It does not require head turns during authentication. It is a real
 PAM authentication path when explicitly enabled, separately from the diagnostic
 GUI and session D-Bus daemon. Existing PAM account/session/password includes,
-sudoers authorization and password fallback remain in place. No login, sshd, su,
-system-auth or authselect files are changed.
+sudoers authorization and password fallback remain in place. This sudo installer
+does not activate KDE, tty login, sshd, su or change system-auth/authselect.
+KDE login/unlock are separate [opt-ins](kde-login.md).
 
 **Security limitation:** presentation attack detection is not validated. Photos
 or recordings have not been qualified against this implementation. The existing
 0.80 minimum is provisional, not a measured FAR target on this NIR camera. This is
 an explicit experimental opt-in, not Windows Hello-level security. Do not infer
-FAR/FRR from unit tests. Neither an unknown face nor a model/camera error grants
-biometric authentication.
+FAR/FRR from unit tests. Mismatch or a model/camera error cannot grant biometric
+authentication; the false-accept rate for unseen people remains unmeasured.
 
 ## Installation and activation
 
@@ -25,6 +26,10 @@ cargo build --release --locked -p hello-sudo --features sudo-face \
   -p hello-pam --features sudo-pam -p hello-cli --features face-opencv
 sudo bash packaging/sudo/install.sh "$PWD"
 ```
+
+If KDE login or unlock is already enabled, build `hello-pam` with `kde-pam`
+instead of `sudo-pam` before reinstalling the shared module. The KDE feature
+includes sudo support; a sudo-only/default module would remove KDE support.
 
 Installation copies executables, models and the PAM adapter into root-owned
 system directories. It does **not** edit PAM. Do not run inference or install the
@@ -58,8 +63,8 @@ block is added before the original `auth include system-auth`:
 auth       sufficient   /usr/lib64/security/pam_linuxhello.so
 ```
 
-Fedora `sudo-i` already includes `sudo`. Authentication applies only to these two
-PAM service names, and to the caller's claimed account. sudo may run PAM with real
+Fedora `sudo-i` already includes `sudo`. This sudo path applies only to these two PAM service names and the caller's
+claimed account. The optional kde-pam feature adds independently gated KDE paths. sudo may run PAM with real
 UID0: in that case the adapter uses PAM_RUSER supplied by sudo's trusted plugin;
 it never trusts SUDO_USER or user environment values. Missing PAM_RUSER when the
 real UID is root causes password fallback. Root/system account templates are not
@@ -127,5 +132,5 @@ owner's presence after protected provisioning; representative NIR FAR/FRR and
 presentation attacks remain unvalidated.
 
 A separate explicit [`kde-pam` opt-in](kde-login.md) can now reuse the same protected
-reference for the KDE display manager. It has independent per-service/account
+reference for KDE display-manager login and Win + L unlocking. It has independent per-service/account
 markers and PAM activation; enabling sudo alone never enables graphical login.

@@ -22,7 +22,7 @@ that every transitive dependency remains maintained.
 | chacha20poly1305 / zeroize | 0.11.0 / 1.9.1 |
 | getrandom / sha2 | 0.4.3 / 0.11.0 |
 | tempfile / libc | 3.27.0 / 0.2.190 |
-| OpenCV Rust binding / native runtime | Optional `opencv` 0.101.1 / tested Fedora OpenCV 4.13.0; CPU-only diagnostics |
+| OpenCV Rust binding / native runtime | Optional `opencv` 0.101.1 / tested Fedora OpenCV 4.13.0; CPU-only local GUI and experimental verification |
 | ONNX Runtime | Not used or bundled; ONNX inference uses optional OpenCV DNN |
 | fprintd / PAM / Polkit / systemd | Fedora-provided system components; record installed RPM versions in hardware/VM reports |
 
@@ -129,7 +129,8 @@ compromised OS or attest a camera/PAD path. TPM support is not implemented.
 
 ## Evidence still required
 
-Fedora release/RPM versions, SELinux enforcing results, actual Yoga Slim 7 camera
-identifiers, physical IR capture and emitter behavior, GNOME/KDE/Hyprland runs,
-model/PAD evaluation, an independent storage/IPC review, PAM VM tests and upgrade /
-recovery drills remain release blockers. A successful build cannot fill them in.
+The recorded Fedora KDE camera/IR, enforcing SELinux and owner-confirmed sudo,
+login and unlock results are summarized in [validation](validation.md). Other
+hardware/desktops, representative NIR/PAD evaluation, independent storage and
+privilege review, broad PAM VM coverage, RPM lifecycle and upgrade/recovery drills
+remain release blockers. A successful build cannot fill them in.

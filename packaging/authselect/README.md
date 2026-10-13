@@ -1,9 +1,10 @@
 # Authselect integration design and VM recovery procedure
 
-**Not implemented and not installable in 0.1.0-dev.** This directory deliberately
-contains no PAM template, module-enable script, profile selection hook or RPM
-scriptlet. No administrator action can substitute for the missing evaluated model,
-PAD, trusted enrollment, reviewed IPC and PAM implementation.
+**Custom authselect integration is not implemented.** This directory contains
+only design/recovery guidance, not a profile or activation script. Service-specific
+experimental [sudo](../../docs/sudo-integration.md) and [KDE](../../docs/kde-login.md)
+PAM integrations exist elsewhere and do not change authselect. Evaluated PAD,
+representative NIR accuracy and independent security review remain release gates.
 
 ## Update-compatible design
 

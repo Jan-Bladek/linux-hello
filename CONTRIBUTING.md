@@ -1,6 +1,6 @@
 # Contributing
 
-Start with [architecture](docs/architecture.md), the
+Start with the [documentation index](docs/index.md), [architecture](docs/architecture.md), the
 [threat model](docs/threat-model.md), [research](docs/research.md) and the
 [installation guide](docs/installation.md). This workspace is a development preview;
 contributors must distinguish implemented behavior, simulated tests and physical
@@ -13,6 +13,8 @@ libraries in the installation guide, then run:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+python3 -B -m unittest discover -s tests -p 'test_*.py'
+python3 tools/check-docs.py
 bash tests/integration/run-session.sh
 cargo build --workspace --release --locked
 cargo audit --deny warnings
@@ -22,13 +24,15 @@ cargo deny --locked check licenses sources bans
 CI pins `cargo-audit` 0.22.2 and `cargo-deny` 0.20.2. A camera and desktop compositor
 are not required for the ordinary test suite. Hardware tests must be explicitly
 selected, consented and labeled. Never put personal biometric fixtures in Git.
-The strict advisory check currently fails on the documented upstream maintenance
-advisories in [dependency status](docs/dependencies.md); do not suppress them.
+The recorded strict advisory check failed on the documented upstream maintenance
+advisories in [dependency status](docs/dependencies.md); do not suppress them or
+describe a dated snapshot as a fresh audit result.
 
 Keep OS-specific code out of portable biometric/validation modules. Prefer typed,
 bounded inputs, explicit errors and RAII resource cleanup. `unsafe` code needs a
-local safety explanation and a testable boundary. Do not add subprocesses or shell
-commands to an authentication path. Use property/fuzz testing for untrusted parsers
+local safety explanation and a testable boundary. Authentication subprocesses must use fixed protected binaries, bounded protocols,
+cleared environments, deadlines and reaping. Never evaluate user-supplied shell
+commands or allow arbitrary executable paths in a privileged path. Use property/fuzz testing for untrusted parsers
 when introducing new formats.
 
 For a security-sensitive change, describe the attacker, trust boundary, failure
@@ -53,3 +57,9 @@ host authentication without the operator's explicit approval.
 
 Pull requests should state the concrete behavior change, relevant validation and
 remaining limitations. Security issues follow [SECURITY.md](SECURITY.md).
+
+Keep current instructions in the guides linked from [docs/index.md](docs/index.md).
+Record dated measurements in [validation](docs/validation.md); mark superseded
+behavior as historical rather than leaving competing instructions in current guides.
+Update dependent components and their documentation together when changing a model,
+template format, caller privilege, worker protocol or supported PAM service.

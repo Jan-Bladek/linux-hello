@@ -1,7 +1,8 @@
 # Architecture
 
 Linux Hello 0.1.0-dev is a modular development preview for local camera diagnostics
-and security engineering. It is not an authentication product release. Read the
+and experimental local facial authentication. It is not a security-qualified
+authentication product release. Read the
 [threat model](threat-model.md) before changing any boundary described here.
 
 ## Components and authority
@@ -10,33 +11,38 @@ and security engineering. It is not an authentication product release. Read the
 |---|---|---|
 | `hello-core` | Shared validated types, capability states, lifecycle policy | Pure library; cannot grant OS access |
 | `hello-camera` | Camera abstraction, Linux V4L2 enumeration and bounded capture | Current user's existing device access |
-| `hello-face` | Replaceable engine/PAD interfaces, quality/matching utilities | No approved model or PAD; cannot authenticate |
-| `hello-storage` | Versioned AEAD records and private local storage primitives | Caller-provided keys; no deployed trusted key service |
+| `hello-face` | Pinned optional YuNet/SFace, quality, model-bound matching and versioned templates | Supplies evidence to GUI/root verifier; no standalone OS authorization or validated PAD |
+| `hello-storage` | UID-bound AEAD records, private atomic storage and administrator import | GUI passphrase keys or separate root-owned PAM key; no TPM/key service |
 | `hello-ipc` | Versioned diagnostic contract and zbus client | Read-only daemon diagnostics |
 | `hello-daemon` | Diagnostic D-Bus endpoint, capability reporting, shutdown | Unprivileged service; no camera or secret access |
 | `hello-fingerprint` | fprintd discovery/status adapter | fprintd retains driver, policy and template ownership |
-| `hello-pam` | Fail-closed integration boundary and readiness documentation | No installable PAM module or success-producing adapter |
-| `hello-cli` / `hello` | Device checks, capture diagnostics, readiness | Never alters PAM or service enablement |
-| `hello-settings` | Slint settings/diagnostics and explicit preview | Ordinary desktop user; no privileged UI |
+| `hello-pam` | Optional PAM adapter and self-only locker launcher | Explicit sudo/KDE feature, supported caller/service only; password fallback |
+| `hello-sudo` | Fixed root verifier and protected template import | Root-owned UID profiles; authenticates only after matching and cleanup |
+| `hello-cli` / `hello` | Diagnostics, local face tools and evaluation | Does not edit PAM; explicit root management scripts handle activation |
+| `hello-settings` | Slint preview, named enrollment and passive recognition | Ordinary desktop user; cannot update the protected PAM profile |
 
 ```mermaid
 flowchart LR
-  CLI[hello CLI] --> CAM[hello-camera / V4L2]
-  GUI[Slint settings] --> CAM
-  CLI --> IPC[hello-ipc]
-  GUI --> IPC
-  IPC --> DBUS[Diagnostic D-Bus service]
-  CLI --> FP[fprintd adapter]
-  FP --> FPRINT[fprintd: existing system policy]
-  CORE[core / face / storage libraries] -. tested building blocks .-> FUTURE[Future evaluated authentication pipeline]
-  FUTURE -. unavailable .-> PAM[PAM adapter]
+  GUI[Slint GUI] --> CAM[V4L2 camera]
+  CLI[hello CLI] --> CAM
+  GUI --> WORKER[Isolated YuNet / SFace worker]
+  CLI --> WORKER
+  GUI --> USERSTORE[Encrypted user reference]
+  CLI --> DBUS[Read-only diagnostic D-Bus]
+  GUI --> DBUS
+  PAM[Supported PAM services] --> VERIFY[Protected UID verifier]
+  LOCK[KScreenLocker own UID] --> LAUNCH[Restricted setuid launcher]
+  LAUNCH --> VERIFY
+  VERIFY --> ROOTSTORE[Root-owned encrypted reference]
+  VERIFY --> CAM
+  VERIFY --> WORKER
+  CLI --> FPRINT[fprintd status]
 ```
 
-The dotted edges are release gates, not implemented authorization routes. The
-diagnostic daemon does not accept camera frames, usernames or secrets. Ordinary
-clients access a camera only if the user's session already has permission. Do not
-add all users to `video` or make `/dev/video*` world-readable to bypass a permissions
-error.
+The diagnostic daemon accepts no frames, templates or authentication requests.
+PAM is a separate explicitly installed/activated route, not a D-Bus extension.
+Ordinary GUI/CLI capture uses existing session device permissions. Do not grant
+blanket video access to hide permission errors. See [authentication flow](authentication-flow.md).
 
 ## Linux and portable boundaries
 
@@ -68,8 +74,8 @@ and task limits and a closed device policy. This is sufficient only for the curr
 read-only scope. A future sensor/secret daemon needs a new reviewed unit and policy;
 removing its restrictions wholesale is not an acceptable migration.
 
-There is no D-Bus activation file, socket activation, autostart, or RPM service
-enablement. Installation and deliberate service startup are distinct actions.
+The diagnostic service has no D-Bus activation file, socket activation, autostart
+or RPM service enablement. Installation and deliberate service startup are distinct actions.
 Diagnostic properties are not evidence that authentication can be enabled.
 
 ## Biometric and storage boundaries
@@ -80,23 +86,24 @@ and population dependent. No model is selected solely because it exports ONNX.
 Model license, preprocessing, sensor applicability, accuracy and adversarial
 evaluation must all be known. Runtime and model checksums must be tracked together.
 
-The storage library exercises authenticated encryption and filesystem safety. It
-does not provide an enrollment ceremony or TPM key lifecycle. A generated test key
-or same-user local key is not a privileged daemon credential. Deletion unlinks the
+GUI enrollment and administrator-authorized import use the storage library.
+The GUI key is passphrase-derived; PAM profiles use separate random root-owned
+keys and protected ancestry. No TPM lifecycle or general-purpose privileged
+management daemon is implemented. A diagnostic test key is not an auth credential.
+Deletion unlinks the
 record; it does not guarantee secure erasure on SSDs, snapshots or backups.
 
-## Release progression
+## Implemented milestones and remaining release gates
 
-1. Establish buildable workspace and explicit threat boundaries.
-2. Validate real camera enumeration/capture on the target Fedora hardware.
-3. Select licensed models, implement inference and independent evaluated PAD;
-   demonstrate local enrollment only after trusted authorization is designed.
-4. Review and test authenticated, request-bound system IPC and secret storage.
-5. Finish accessible desktop workflows and hardware error recovery.
-6. Implement narrow PAM integration and validate supported stacks in disposable
-   Fedora VMs with rollback and password recovery.
-7. Validate RPM upgrade/removal, SELinux, GNOME/KDE/Hyprland and physical attacks
-   before calling any release candidate suitable for authentication.
+Workspace, physical target camera/IR, named encrypted enrollment, passive
+verification and narrow optional sudo/KDE PAM integrations are implemented.
+Owner-confirmed Plasma login and Win + L are functional evidence on one host.
+
+Remaining gates include representative sensor/model/PAD evaluation; independent
+code/key/privilege review; authenticated general-purpose management IPC; broader
+desktop/hardware testing; disposable-VM recovery; and RPM lifecycle/upgrade review.
+Default diagnostic capability flags do not become security-qualified merely
+because an experimental PAM service has been explicitly enabled.
 
 See [authentication flow](authentication-flow.md), [installation](installation.md)
 and [upstream research](research.md) for the concrete gates and operating steps.

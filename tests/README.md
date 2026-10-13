@@ -22,7 +22,9 @@ runs them without a custom workspace-wide test harness.
 Run `cargo test --workspace --locked` followed by
 `bash tests/integration/run-session.sh`. The latter runs the two tests that need
 an isolated D-Bus. Hardware remains ignored and must never run automatically on
-a user's camera. No test installs PAM or changes system authentication.
+a user's camera. These ordinary Cargo/bus tests do not install PAM or change
+system authentication. Explicit privileged and hardware entry points below have
+separate requirements.
 
 For UI visual review, set `LINUX_HELLO_UI_SNAPSHOT_DIR` to a scratch directory and
 run `cargo test --locked -p hello-settings`. The test writes PPM images of the
@@ -71,3 +73,49 @@ blocked pipes and reply limits, real CPU/memory/syscall enforcement, and held-ou
 evaluation arithmetic/data leakage. The ignored `crates/hello-cli/tests/worker.rs`
 test needs the same explicit model/public-fixture environment as the direct
 model integration test. It runs actual inference with the worker restrictions.
+
+## Optional verification and PAM checks
+
+The current [authentication flow](../docs/authentication-flow.md) distinguishes
+GUI verification, root sudo/display-manager verification and own-UID locker
+verification. Test optional feature builds separately:
+
+```sh
+cargo test --locked -p hello-pam --features kde-pam
+cargo test --locked -p hello-sudo --features sudo-face
+cargo test --locked -p hello-cli --features face-opencv passive
+cargo test --locked -p hello-settings --features face-diagnostics
+```
+
+PAM tests cover supported caller/service scope, per-transaction credential
+state, failure and expired-child rejection. Passive tests cover three-frame
+success, unknown identity, quality recovery, duplicates, multiple faces,
+reference changes, cancellation and model errors. Fixtures are synthetic and
+do not establish NIR accuracy or attack resistance.
+
+Root-only manual dispatch checks are under `packaging/sudo` and `packaging/kde`.
+Use their [sudo](../docs/sudo-integration.md#recovery-and-testing) and
+[KDE](../docs/kde-login.md#status-rollback-and-checks) instructions. The
+`test-setcred.py` fixture mounts substitute helpers/dummy state only inside a
+verified private mount namespace. Never replace the live verifier globally.
+Missing-marker tests have documented pre-opt-in assumptions; do not run them
+over an already active service without reviewing their state requirements.
+
+The explicit password-fallback test temporarily moves the detector and restores
+it in `finally`; it needs authorized root access and the original account's
+masked password. SIGKILL/power loss still requires recovery. It opens no desktop
+session and does not measure face recognition. New deployment stacks also need
+disposable-VM recovery tests. The owner confirmed real login and Win + L on the
+target Fedora KDE host; broader hardware/desktop coverage remains open.
+
+## Documentation checks
+
+```sh
+python3 tools/check-docs.py
+python3 -B -m unittest discover -s tests -p 'test_documentation.py'
+```
+
+The checker validates repository Markdown file/image links and heading fragments,
+including archived milestones. It skips fenced examples and does not fetch
+external URLs. CI runs the same check. It cannot validate external source claims,
+biometric security or the truth of owner-declared results.

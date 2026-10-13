@@ -1,89 +1,95 @@
-# Authentication and enrollment flow
+# Enrollment and authentication flow
 
-## What exists now
+This guide describes the current experimental implementation. Security
+qualification and future authenticated D-Bus management are separate work.
+See [scope](index.md) and [threat model](threat-model.md).
 
-Version 0.1.0-dev provides diagnostics and tested library building blocks. Face
-authentication, trusted enrollment and a loadable PAM module are unavailable. The
-GUI must show this state, and commands must not reinterpret a test similarity result
-as identity verification. There is no administrator switch that safely removes the
-missing-model or missing-PAD gates.
+## GUI enrollment
 
-Public diagnostic RPCs contain no identity parameters, authorization requests or
-biometric material. The library state machine is a policy building block, not a
-live daemon verification protocol. Session-bus tests validate transport behavior
-only; a user can control their own session bus.
+1. The ordinary user selects an enumerated camera and optional supported IR mode.
+2. An explicit scan starts one bounded camera session and isolated loaded worker.
+3. Eight distinct valid frames are collected. New V2 templates begin with three
+   frontal anchors, then moderate pose variation. Quality and consistency failures
+   do not add samples. Cancellation preserves the previous reference.
+4. The user supplies a local display name; it does not select an OS identity.
+5. An explicit save encrypts name and template using a separate passphrase-derived
+   key. Load/deletion are separate user actions; startup opens no saved reference.
 
-## Future enrollment transaction (not implemented)
+GUI verification compares three suitable fresh frames with the selected reference.
+It requires compatible model, sensor/IR binding, geometry and threshold evidence.
+A below-threshold/incompatible face, multiple faces, malformed data or incomplete
+scan cannot produce positive recognition. This does not imply a measured zero FAR.
+The optional head-motion diagnostic is not part of normal
+verification and is not validated PAD.
 
-1. Resolve the caller's unique system-bus name through the broker and determine the
-   caller's UID/session. Validate an explicit target UID under service policy.
-2. Obtain fresh trusted system authentication for enrollment. Bind the Polkit
-   authorization to the authenticated bus subject, intended action and target.
-   Do not request the user's password through a Linux Hello-owned dialog.
-3. Reserve one sensor and establish a bounded operation tied to the caller and a
-   monotonic deadline. Check model, sensor and PAD readiness before any capture.
-4. Collect multiple samples, reject unsupported inputs, require the evaluated PAD
-   protocol and enforce quality/diversity criteria. A fixed count of similar frames
-   is not evidence of sufficient enrollment quality.
-5. Produce a versioned template bound to UID, model/preprocessing identity and sensor
-   policy. Encrypt with an established AEAD and a service-controlled key.
-6. Recheck authorization and atomically commit the private encrypted record. Return
-   only enrollment status after persistence succeeds; never return a template.
-7. On cancellation, timeout, disconnection, authorization loss or failure, release
-   the sensor and discard pending data. An incomplete enrollment is never active.
+## Protected PAM provisioning
 
-Deletion requires the same explicit account scope and a fresh authorization policy.
-Report absence separately from inability to remove; document backup retention and
-the limits of file deletion. Do not delete fprintd-owned templates from this store.
+The sudo enrollment helper requires administrator authorization and a normal NSS
+account UID. It reads the GUI reference passphrase through a masked terminal,
+checks private user-owned files and imports a complete compatible reference.
+It encrypts a separate copy with a random root-owned key under
+`/var/lib/linux-hello/sudo/<uid>`. The GUI reference is not altered. Each profile
+has UID-bound template/config/key files; unprivileged GUI edits cannot change them.
 
-## Future verification transaction (not implemented)
+A live verification confirms the import. sudo activation requires another match,
+backs up the original service file and preserves the original password stack.
+KDE login and unlock have independent `pam-SERVICE.enabled` markers and two live
+pre-activation tests; they reuse the protected reference. See [sudo](sudo-integration.md)
+and [KDE](kde-login.md) for exact commands, permissions and rollback.
+
+## Verification transaction
 
 ```mermaid
-stateDiagram-v2
-  [*] --> Requested
-  Requested --> ContextValidated: authenticated requester and target
-  ContextValidated --> Capturing: policy and hardware ready
-  Capturing --> PADChecked: fresh bounded samples
-  PADChecked --> Matching: evaluated PAD passed
-  Matching --> ResultAvailable: policy threshold and quality passed
-  ResultAvailable --> Consumed: original requester only / once
-  Consumed --> [*]
-  Requested --> Failed: invalid requester
-  ContextValidated --> Failed: missing policy or component
-  Capturing --> Failed: timeout / disconnect / bad input
-  PADChecked --> Failed: unavailable or failed PAD
-  Matching --> Failed: mismatch / model error
-  ResultAvailable --> Failed: expiry / owner change / replay
-  Failed --> [*]
+flowchart TD
+  PAM[PAM_SERVICE and PAM_USER] --> Scope[Check service, caller and account scope]
+  Scope --> Route{Supported caller}
+  Route -->|sudo or root display manager| Helper[Fixed root-owned verifier]
+  Route -->|kde and own real UID| Launcher[Self-only setuid launcher]
+  Launcher --> Helper
+  Helper --> Preflight[Protected UID template, config, pinned models and sensor binding]
+  Preflight --> Capture[Bounded camera and isolated worker]
+  Capture --> Match[Three fresh suitable frames, identity and geometry checks]
+  Match --> Cleanup[Stop camera, restore IR and reap worker]
+  Cleanup -->|all checks passed before deadline| Success[PAM success on this transaction]
+  Scope -->|invalid| Fallback[Original password stack]
+  Preflight -->|failure| Fallback
+  Capture -->|failure or cancellation| Fallback
+  Match -->|mismatch or incomplete| Fallback
+  Cleanup -->|failure or timeout| Fallback
 ```
 
-This is a target protocol, not a promise that the current library contains every
-state shown. Every transition must be checked server-side; concurrent callers must
-not share mutable verification results. Cancel/disconnect invalidates the pending
-operation even if a late worker result arrives. A request ID locates state and is
-never sufficient authorization on its own.
+The helper returns success only after verification and cleanup complete. PAM
+expires the attempt at25 seconds, requests graceful cancellation, then kills and
+reaps a hung child after another10 seconds. A late successful exit cannot be used.
+Every new PAM authentication clears its per-handle match marker. Credential
+establishment succeeds only after this adapter's own successful transaction;
+failed retries cannot reuse an earlier result. No GUI score or D-Bus token is
+accepted as authentication proof.
 
-## PAM and password preservation
+## Password and desktop behavior
 
-A future PAM module must be narrow: obtain verified PAM context, communicate with
-the authenticated system daemon, enforce a short timeout, map failures correctly
-and return without leaking secrets. It must not load inference models, manipulate
-camera controls or run shell commands inside the authenticating process. No mock
-success return path is permitted in production builds.
+sudo retains sudoers authorization and original account/password/session includes.
+For KDE, a dedicated authentication substack records biometric success and ends
+only that inner stack; rejection executes `password-auth`. Parent SELinux,
+wallet/postlogin and other original groups remain. Earlier required denial is not
+overridden. Account/session policy is still controlled by the host and calling
+application; KScreenLocker checks authentication and refreshes credentials rather
+than opening a new desktop session. KWallet may separately need its password.
 
-PAM codes describe a module outcome; stack control flags determine whether the
-application ultimately permits login. `PAM_AUTHINFO_UNAVAIL` and an ordinary
-authentication failure must never be confused with biometric success. The
-[Linux-PAM upstream contract](https://github.com/linux-pam/linux-pam/blob/master/doc/man/pam_sm_authenticate.3.xml)
-documents module return codes. Their interaction with each Fedora profile still
-requires testing.
+Only `sudo`, `sudo-i`, `plasmalogin`, `sddm` and `kde` are integrated. GDM, tty
+login, sshd, su, Polkit and other lockers remain outside scope. Default installation
+never edits production PAM or authselect. Explicit activation does edit the named
+service after its checks. Disk encryption and encrypted-home unlock are unchanged.
 
-Password fallback must retain account restrictions, lockout, password expiration,
-session setup and existing fingerprint behavior. sudo, GDM, SDDM, each screen
-locker and each Polkit agent may drive conversations differently. PAM support does
-not imply that all of them will show the expected prompts. Keyring and encrypted
-home/disk unlock are separate integrations and must not be silently changed.
+## Diagnostic D-Bus and future management
 
-The [authselect review procedure](../packaging/authselect/README.md) intentionally
-contains no loadable PAM template or activation script. Recovery is part of the
-release acceptance criteria, not an instruction to test an unsafe stack on a host.
+The daemon remains read-only. It resolves requester UID through the bus and
+accepts no identity-bearing enrollment/verification request, frame or key.
+Its disabled security-readiness flags describe the diagnostic contract, not the
+activation state of optional PAM integrations.
+
+A future general-purpose management service requires reviewed requester/target
+binding, fresh trusted authorization, operation deadlines, disconnect handling,
+one-shot result consumption and protected key lifecycle. This protocol and Polkit
+management are not implemented. See the [authselect design and VM recovery
+procedure](../packaging/authselect/README.md) before extending supported stacks.

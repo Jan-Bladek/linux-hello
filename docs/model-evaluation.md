@@ -1,8 +1,9 @@
 # YuNet/SFace review and local evaluation — 2026-10-11
 
-## Current decision
+## Model decision and dated evidence
 
-Pinned YuNet/SFace are accepted for explicit local functional evaluation only.
+Pinned YuNet/SFace are used for explicit local GUI and experimental PAM
+functionality, without security-qualified NIR adoption.
 No production biometric threshold, accuracy or redistribution approval is claimed.
 Model bytes, input contract and artifact license evidence are recorded in
 [inference diagnostics](inference.md). This review adds the following evidence.
@@ -73,12 +74,13 @@ startup median 147 ms, maximum RSS 207960 KiB (about 203 MiB). Both runs
 have **no FAR/FRR output**. These timings cover one host and one public input,
 not genuine/impostor performance or PAD.
 
-## Genuine/impostor evaluation
+## Manifest V1: pairwise genuine/impostor evaluation
 
 `hello face-evaluate` accepts only an explicit local manifest. It never downloads,
 captures, enrolls, or persists vectors. No suitable consented identity/session
 collection has been supplied in this workspace, so population FAR/FRR were not
-measured and no numeric authentication threshold was selected.
+measured and no calibrated authentication threshold was selected. The implemented
+strict floor0.80 remains a separate provisional policy.
 
 Copy [the manifest example](evaluation-manifest.example.json) next to your locally
 authorized dataset and replace every placeholder. Provide these records:
@@ -142,5 +144,15 @@ assumption, not validated population confidence intervals. Zero observed errors
 still have a nonzero upper bound. Real qualification needs a prespecified protocol,
 identity/session cluster bootstrap or independent attempt design, larger held-out
 populations, lighting/pose/glasses/skin-tone coverage, time separation and independent
-PAD/acquisition evaluation. Pairwise feature comparison is not a test of the future
-multi-sample enrollment workflow. RGB results do not establish NIR applicability.
+PAD/acquisition evaluation. V1 pairwise comparison does not test the implemented
+multi-sample verification workflow. RGB results do not establish NIR applicability.
+
+## Manifest V2: claimed-user template and sequence evaluation
+
+The evaluator also accepts [manifest V2](verification-manifest.example.json) for
+eight-sample enrollment and explicitly claimed-user multi-frame attempts. It
+reports end-to-end and conditional FAR/FRR, acquisition failures and optional
+face-count agreement with declared annotations. It is not a complete live PAM,
+GUI retry-protocol or PAD evaluation. See the [V2 protocol and limitations](accuracy-improvements.md#measurement-protocol-and-available-evidence).
+Both versions preserve separate calibration/evaluation identities and sessions;
+neither installs a threshold into GUI/PAM.

@@ -1,16 +1,17 @@
 # Linux Hello threat model
 
-Version: 0.1.0-dev. Written before the daemon and PAM integration. Review date:
-2026-10-10. This is a design and implementation boundary, not a security audit.
+Version: 0.1.0-dev. Reviewed for sudo, KDE login and KDE unlock on 2026-10-13.
+This describes the implementation boundary, not an independent security audit.
 
 ## Current security boundary
 
-This development preview cannot authenticate a person. It has no approved face
-model, evaluated presentation attack detection (PAD), trusted enrollment ceremony,
-or usable PAM authentication implementation. Diagnostic camera capture, numerical
-matching and encrypted-storage tests do not establish those properties. Disabled
-operations must return an explicit error; neither a fixture nor a similarity score
-may become an authentication success.
+Explicit experimental authentication is implemented for sudo, KDE login and
+KDE unlock. It uses protected UID templates, pinned models, caller checks and
+multi-frame verification. GUI recognition and PAM authentication are distinct;
+neither provides validated PAD, hardware attestation or representative NIR FAR/FRR.
+The default diagnostic security state machine still refuses SystemAuthentication.
+No fixture or model/camera/cleanup failure may become real biometric success.
+See [current scope](index.md) and [authentication flow](authentication-flow.md).
 
 The daemon is a read-only diagnostic service. Its interface publishes public
 version and security-capability information only. It accepts no username, frame,
@@ -29,7 +30,7 @@ Consider an unauthenticated person at the laptop; a local unprivileged process;
 another logged-in account; a compromised user session; a process replaying old
 messages; a substituted USB or virtual camera; a malicious model; and an attacker
 with a stolen disk. Root, the kernel, firmware, the D-Bus broker, the configured
-authentication stack and installed packages are part of a future trusted computing
+authentication stack and installed packages are part of the trusted computing
 base. Root/kernel compromise cannot be repaired by this application. A compromised
 session can observe that user's preview and misuse their ordinary camera access.
 
@@ -42,20 +43,20 @@ trusted camera-to-daemon path.
 
 | Boundary / attack | Required control | Preview state / remaining evidence |
 |---|---|---|
-| Photograph, display replay, mask, injected frames, single IR image | Independent PAD using an evaluated sensor/protocol and challenge freshness; reject unavailable PAD | No PAD implementation; all authentication unavailable |
+| Photograph, display replay, mask, injected frames | Independently evaluated PAD required for a qualified release | Experimental PAM works without validated PAD; IR/geometry/motion must not be represented as spoof protection |
 | Username spoofing over IPC | Resolve authenticated sender credentials at the system bus; map request context and target account through policy | No identity-bearing or sensitive RPCs exist |
 | Impersonated daemon | Restricted system-bus name ownership; clients require that bus and interface/version; reject owner changes mid-request | Packaged name restricted to dedicated service account; session mode diagnostic only |
 | Replayed verification result | Request-scoped deadline, requester unique name, target UID, service binding, one-shot consumption; cancel on disconnect | No verification result/token API exists |
-| Unauthorized enrollment/deletion | Fresh trusted password/admin authentication, verified active subject, explicit scope, no cached authorization for enrollment | No user enrollment/deletion workflow exposed |
-| Privilege escalation from GUI/model/parser | GUI unprivileged; no shell evaluation of inputs; privileged surface minimal; model worker isolated | GUI and inference experiments have no authentication authority |
-| Template theft | AEAD, authenticated metadata, private files, separation of key from data, no template export | Storage library is developmental; key lifecycle and daemon store unavailable |
+| Unauthorized enrollment/deletion | Explicit account scope and administrator authorization for root import; private storage | GUI edits affect its own reference only; root-owned PAM copy requires privileged import |
+| Privilege escalation from GUI/model/parser | GUI unprivileged; no shell evaluation of inputs; privileged surface minimal; model worker isolated | GUI has no system authority; fixed root verifier and self-only setuid launcher are privileged surfaces |
+| Template theft | AEAD, authenticated metadata, private files, separation of key from data, no template export | GUI passphrase-derived key; separate root-only PAM key/template; no TPM or offline key separation |
 | Symlink/hardlink/path traversal race | Trusted parent directory, ownership/mode checks, nofollow descriptor access, exclusive creation, atomic writes | Storage safeguards require review; never use a writable shared directory |
-| Crash during write/delete | Atomic replacement and fsync; versioned records; no successful enrollment before durability | Library tests only; no SSD secure-erasure claim |
-| Device substitution / hot unplug | Record descriptor identity, reject unexpected formats, timeout and release, re-probe after reconnect | V4L2 errors are diagnostics; substitution resistance unproved |
+| Crash during write/delete | Atomic replacement and fsync; versioned records; no successful enrollment before durability | Atomic encrypted persistence and regression tests; no SSD secure-erasure claim |
+| Device substitution / hot unplug | Record descriptor identity, reject unexpected formats, timeout and release, re-probe after reconnect | Camera errors reject; descriptor binding is not cryptographic substitution resistance |
 | Daemon/camera resource exhaustion | Bounded inputs, work queues, global camera lease, deadlines, rate limits; no unlimited frames over D-Bus | Daemon performs no camera work; capture is explicitly initiated |
 | Sensitive logs or crash dumps | Never log images, embeddings, secrets, matching payloads; disable core dumps in service | Sanitized diagnostics only; user-controlled debugger remains outside boundary |
-| PAM control-flag error | VM tests of every supported stack, negative cases and password recovery before opt-in | No PAM configuration or automatic enablement is shipped |
-| Malicious model/library update | Pin versions/checksums; verify license and provenance; audit runtime and full dependency tree | No model downloaded/bundled; dependency checks in CI |
+| PAM control-flag error | VM tests of every supported stack, negative cases and password recovery before opt-in | Explicit service-specific activation and rollback; automatic/RPM activation absent; broad VM matrix still pending |
+| Malicious model/library update | Pin versions/checksums; verify license and provenance; audit runtime and full dependency tree | Explicit downloader verifies pins; no weights bundled; root verifier refuses user-selected models |
 | Offline disk attack | Independent key protection and validated measured-boot policy if TPM used | TPM protection not implemented; encryption alone with colocated key is insufficient |
 | False security indicator | Capability states derive from actual functionality; unavailable is never green/enabled | Required invariant for GUI, CLI and D-Bus |
 
@@ -91,24 +92,28 @@ file denies every action in this preview and is not installed by the RPM.
 
 ## Data lifecycle
 
-Camera frames live only for an explicitly started diagnostic capture/preview and
+Camera frames live only for a bounded diagnostic, enrollment or authentication
+operation and
 are not saved by default. Releasing the capture handle and UI image after use
 reduces retention; memory zeroization cannot erase camera buffers, GPU copies,
 swap, filesystem snapshots, backups, or prior crash dumps. Do not claim otherwise.
 
-A future enrollment template must bind format version, UID, model identity,
+The template/envelope binds version, UID and model/sensor context. Future
+qualified formats must additionally review complete pipeline identity. A template
+must bind format version, UID, model identity,
 preprocessing identity, dimensionality and sensor requirements as authenticated
 metadata. Reject unknown schema/model IDs, NaN/infinity, oversized input, malformed
 records and wrong keys. Use an established AEAD implementation and fresh random
 nonces, never home-grown cryptography. A similarity score is a model-specific
 measurement, not a calibrated probability or standalone authorization.
 
-A daemon key must not live in the same user-readable directory as ciphertext.
-The Linux storage helper rejects symlinks along the path and checks the final
-directory's ownership/private mode. It does not establish a privileged deployment's
-trust in every ancestor directory. A future root service must use a fixed,
-root-owned ancestry that unprivileged users cannot rename or replace, and review
-that condition independently. Never accept a root store path from a GUI client.
+GUI ciphertext uses a separate user passphrase-derived key. PAM ciphertext and
+its random key live together in a root-private profile: this prevents ordinary
+users from reading/modifying them but does not protect against root or an offline
+disk attacker. Root verification checks fixed, non-writable root-owned ancestors;
+store paths, models and target identity are not selected by GUI input. The locker
+launcher takes no arguments and derives the only target from kernel real UID.
+It executes only the fixed verifier and exposes no enrollment or export API.
 
 Evaluate root-only service credentials or TPM-sealed keys, including backup,
 rotation, reinstall, firmware updates, recovery and device theft. A TPM seal can
@@ -118,18 +123,21 @@ or human presence. This release has no hardware-backed security claim.
 ## Password fallback and failure policy
 
 Fail closed means Linux Hello never returns biometric success on failure. It does
-not mean removing the existing password path. A future PAM stack must allow the
+not mean removing the existing password path. The supported PAM stacks allow the
 administrator's established password policy to run when biometrics are unavailable,
 while retaining account, lockout, password-expiration and session checks. Whether
 a PAM return code permits fallback depends on control flags and surrounding stack.
-Those combinations require VM tests, not a universal copy-and-paste PAM line.
+The documented narrow stacks have host/isolated dispatch and password fallback
+checks; a broader disposable-VM matrix remains required. No universal PAM line
+is supplied for unsupported services.
 
 Ordinary installation must not write `/etc/pam.d`, select an authselect profile,
 change disk encryption, grant global video access, enable a service, or weaken
-SELinux. Administrator opt-in is necessary but is not sufficient: hardware, PAD,
-IPC review, recovery and a supported stack must be validated first.
+SELinux. Explicit experimental activation follows live checks and discloses its limits.
+This is not production security qualification: PAD, model/sensor evaluation,
+privilege review and deployment/recovery validation remain required.
 
-## Required evidence before authentication can be enabled
+## Required evidence before a security-qualified authentication release
 
 1. Independently reviewed code and protocol, authenticated enrollment, evaluated
    model/license/provenance, and attack testing of the complete sensor/PAD path.

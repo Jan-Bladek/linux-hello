@@ -3,10 +3,11 @@
 This development build contains real local matching, multi-sample template construction,
 image quality statistics, authenticated encryption, and Linux secure file operations.
 An optional CPU YuNet/SFace adapter now performs detection, alignment and ONNX
-inference for local diagnostics; see [its contract and reproduction steps](inference.md).
-It does **not** contain evaluated recognition, a presentation attack detector or trusted
-enrollment. Trusted enrollment for system login therefore cannot complete. Model weights are
-fetched only by an explicit utility command, never during application execution or build.
+inference for the GUI and experimental verifier; see [its contract and reproduction steps](inference.md).
+It does **not** contain security-qualified recognition or validated presentation
+attack detection. Administrator-authorized protected import and experimental PAM
+verification are implemented separately; see [authentication flow](authentication-flow.md).
+Model weights are fetched only by an explicit utility command, never during application execution or build.
 
 `FaceEngine` separates detection, alignment, and embedding extraction. The default
 engine is `UnconfiguredEngine`, which returns `Unsupported` for every operation.
@@ -36,8 +37,8 @@ transform, ONNX inference, model-file verification, trusted acquisition or PAD.
 
 | Candidate | Upstream licensing information | Decision for this build |
 |---|---|---|
-| OpenCV Zoo YuNet detector | Directory states MIT; current ONNX export supports dynamic dimensions | Candidate for controlled evaluation; not bundled |
-| OpenCV Zoo SFace/MobileFaceNet recognizer | Directory states Apache-2.0; ONNX and five-landmark alignment documented | Preferred first evaluation candidate for a small local pipeline; not selected for authentication |
+| OpenCV Zoo YuNet detector | Directory states MIT; current ONNX export supports dynamic dimensions | Selected for local functionality; qualification incomplete; not bundled |
+| OpenCV Zoo SFace/MobileFaceNet recognizer | Directory states Apache-2.0; ONNX and five-landmark alignment documented | Selected for local GUI and experimental PAM functionality; NIR/PAD/provenance qualification incomplete |
 | fal AuraFace-v1 recognizer | Model card labels Apache-2.0; ResNet100; acknowledges demographic limitations | Alternative evaluation candidate; device memory/latency unmeasured |
 | InsightFace provided pretrained packs | Code and weights have different terms; provided weights are restricted to noncommercial research | Do not redistribute as general-purpose Linux authentication weights |
 
@@ -64,7 +65,7 @@ record its license, dataset provenance, ONNX opset, input shape/layout/color ran
 alignment transform, output dimension, and supported runtime. Reject missing,
 modified, incompatible, unexpectedly shaped, or non-finite outputs. Disable network
 model discovery and custom operator loading. A model supplied by an unprivileged
-user must never be loaded into a future privileged verifier.
+user must never be loaded into the privileged verifier.
 
 ## Implemented invariants
 
@@ -78,8 +79,8 @@ user must never be loaded into a future privileged verifier.
 * Enrollment takes 3–12 distinct sample digests, requires exactly one detected face,
   applies quality checks, checks pairwise consistency, and creates a normalized
   centroid. Capture adapters must calculate sample digests and metrics themselves.
-* Policy thresholds reject NaN, infinities, and values outside [0,1]. The sample
-  thresholds are uncalibrated diagnostic values and cannot enable authentication.
+* Policy thresholds reject NaN, infinities, and values outside [0,1]. The current
+  strict verification floor 0.80 is provisional; no calibrated FAR target is claimed.
 * Template JSON has a 64 KiB limit, strict fields/version/sample count validation,
   and a dimension-bounded custom embedding deserializer. Sensitive vectors and
   plaintext buffers are zeroized on drop, including deserialization failures.
@@ -90,8 +91,9 @@ PAD. Missing PAD, attack detection, weak/non-finite PAD confidence, cancellation
 reused events, and mismatched evidence all terminate the attempt. Context values must
 come from verified transport credentials; these Rust types are not IPC payloads.
 `SystemAuthentication` is unconditionally rejected, and `authentication_ready()` is
-false even if a caller changes reporting flags. This release cannot issue a passing
-system authentication result.
+false even if a caller changes reporting flags. This diagnostic state machine cannot issue a passing system authentication result;
+the separately opted-in PAM adapter authenticates through the root verifier and
+does not use this readiness state as authorization.
 
 ## Encrypted template storage
 
@@ -126,10 +128,11 @@ across backups needs per-enrollment key rotation plus a trusted generation count
 
 The generic API receives keys in memory. Optional GUI diagnostic persistence
 derives a key from a separate user-entered reference passphrase using Argon2id;
-there is no plaintext key file, embedded key or daemon/TPM provisioning. See
+the GUI stores no plaintext key file. The separate PAM profile uses a random
+root-owned key file, not the GUI passphrase or a daemon/TPM key service. See
 [inference diagnostics](inference.md#multi-sample-encrypted-diagnostic-reference)
-for format, parameters and limitations. Trusted storage readiness remains false
-until a reviewed privileged provisioning path exists. Windows
+for format, parameters and limitations. Diagnostic security-readiness flags remain false; protected administrator import
+exists for experimental PAM, while independent storage/key qualification remains open. Windows
 supports only portable cryptographic envelope tests, not filesystem persistence.
 Zeroization reduces residual memory; it does not provide locked pages, swap exclusion,
 or protection against a compromised process/root. Set service core dump limits and
@@ -140,7 +143,7 @@ design must review PCR policy, measured boot, updates, recovery and key rotation
 and distinguish key release from trustworthy live camera capture. No hardware-backed
 authentication or TPM storage is implemented or advertised.
 
-## Required evaluation before security integration
+## Required evaluation before a security-qualified release
 
 1. Obtain consented genuine/impostor datasets covering the actual IR/RGB modes,
    lighting, pose, glasses, skin tones, time separation, and enrollment conditions.
@@ -155,7 +158,8 @@ authentication or TPM storage is implemented or advertised.
    IR image and a blink prompt are insufficient evidence for release.
 5. Review the trusted acquisition path, protected model/key provenance, enrollment
    authentication, independent PAD binding, IPC principal checks, and recovery paths.
-   Run PAM fail-closed tests only in a disposable Fedora VM.
+   Use isolated PAM configurations/private mount namespaces and disposable Fedora
+   VMs; real host activation requires explicit authorization and recovery.
 
 The present tests exercise algorithms and failure handling using synthetic values;
 they are not evidence of biometric accuracy or physical attack resistance.
@@ -166,7 +170,8 @@ they are not evidence of biometric accuracy or physical attack resistance.
 New native diagnostic enrollment uses version2 templates and three frontal
 anchors before pose variation; old full version1 references retain their scoring.
 See [the current component audit and limits](accuracy-improvements.md). Protected
-storage, account access rules, model binding and privileged authentication gates
-are unchanged. Face processing is local. Pose-conditioned matching, grayscale
+storage, account access rules and model binding remain in force. Optional PAM
+integration was added after this accuracy refactor; default diagnostic readiness
+flags remain unchanged. Face processing is local. Pose-conditioned matching, grayscale
 conversion and ordinary movement checks do not establish PAD. No representative
 NIR population error rates or production authentication readiness are claimed.
