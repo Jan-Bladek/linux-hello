@@ -8,7 +8,7 @@ specifications remain IR hints, not wavelength or emitter proof.
 ## Current emitter control — implemented and tested
 
 The operator subsequently followed the GUI check instructions and reported:
-“pięknie działa iliminator i kamera”. This confirms observed illuminator and camera
+“the illuminator and camera work well” (translated from the owner’s report). This confirms observed illuminator and camera
 operation on this laptop. The report did not separately describe blink timing or
 whether the light went off after Stop, so those visual details are not inferred.
 Register restoration remains supported by the hardware tests below.
@@ -25,7 +25,7 @@ No undocumented Realtek intensity bytes were written.
 
 Native `IrEmitterLease` now enables this mode for an explicit capture session.
 CLI `capture`, optional `camera-quality` and `face-probe` accept `--ir-emitter`.
-GUI **Osoba** has an opt-in **Doświetlenie podczerwienią (IR)** checkbox. Defaults leave the
+GUI **Face** has an opt-in **IR illumination** checkbox. Defaults leave the
 control untouched. For ordinary GUI/CLI capture, no root, extra dependency, udev rule, boot service,
 external emitter executable or PAM change is required. Optional PAM verification
 uses the same scoped control from its separately protected verifier. Firmware mode is reapplied on every

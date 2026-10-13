@@ -21,7 +21,7 @@ PACKAGES = ['git', 'gcc', 'gcc-c++', 'clang-devel', 'pkgconf-pkg-config', 'openc
             'selinux-policy-devel']
 BINS = ['hello', 'hello-settings', 'hello-face-worker', 'hello-sudo', 'hello-lock-verify']
 SCRIPTS = {'sudo': ['manage.py', 'enroll-and-enable.sh'],
-           'kde': ['manage-kde.py', 'activate-kde.sh', 'activate-lock.sh', 'configure-person.py']}
+           'kde': ['manage-kde.py', 'activate-kde.sh', 'activate-lock.sh', 'configure-person.py', 'manage-person.py']}
 
 
 def run(args, **kwargs):
@@ -36,7 +36,7 @@ def fedora(path=Path('/etc/os-release')):
             key, value = line.split('=', 1)
             values[key] = value.strip('"')
     if values.get('ID') != 'fedora' or int(values.get('VERSION_ID', '0')) < 44:
-        raise RuntimeError('Instalator obsługuje Fedorę 44 lub nowszą; nie zmieniono systemu.')
+        raise RuntimeError('This installer supports Fedora 44 or later; no system changes were made.')
     return values
 
 
@@ -68,7 +68,7 @@ def rust(offline):
     local = Path.home() / '.cargo/bin/rustup'
     if not rustup and local.is_file(): rustup = str(local)
     if not rustup:
-        if offline: raise RuntimeError('Brak rustup; tryb offline nie instaluje toolchainu.')
+        if offline: raise RuntimeError('Missing rustup; offline mode cannot install a toolchain.')
         with tempfile.TemporaryDirectory(prefix='linux-hello-rustup-') as tmp:
             script = Path(tmp) / 'rustup-init.sh'
             run(['/usr/bin/curl', '--proto', '=https', '--tlsv1.2', '--fail', '--location',
@@ -116,7 +116,7 @@ def desktop():
     folder = Path.home() / '.local/share/applications'
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / 'linux-hello.desktop'
-    if path.is_symlink(): raise RuntimeError('Dowiązanie desktop: pozostawiono bez zmian. Uruchom linux-hello.')
+    if path.is_symlink(): raise RuntimeError('Desktop shortcut is a symlink and was left unchanged. Run linux-hello.')
     content = (REPO / 'packaging/installer/linux-hello.desktop').read_text()
     if path.exists() and path.read_text() != content:
         backup = folder / 'linux-hello.desktop.before-install'
@@ -126,24 +126,24 @@ def desktop():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dry-run', action='store_true', help='Wyświetl plan bez pobierania, kompilacji i zmian.')
-    parser.add_argument('--build-only', action='store_true', help='Zbuduj i sprawdź; bez instalacji plików systemowych.')
-    parser.add_argument('--skip-deps', action='store_true', help='Nie uruchamiaj dnf; zależności muszą być zainstalowane.')
-    parser.add_argument('--offline', action='store_true', help='Bez sieci; wymaga modeli, crate cache i toolchainu.')
-    parser.add_argument('--with-tpm', action='store_true', help='Dodaj opcjonalną politykę SELinux dla TPM; bez migracji kluczy.')
+    parser.add_argument('--dry-run', action='store_true', help='Show the plan without downloads, compilation or changes.')
+    parser.add_argument('--build-only', action='store_true', help='Build and verify without installing application files.')
+    parser.add_argument('--skip-deps', action='store_true', help='Skip dnf; dependencies must already be installed.')
+    parser.add_argument('--offline', action='store_true', help='No network; requires cached models, crates and toolchain.')
+    parser.add_argument('--with-tpm', action='store_true', help='Add the optional TPM SELinux policy without migrating keys.')
     args = parser.parse_args()
-    if os.geteuid() == 0: raise RuntimeError('Uruchom ./install.sh jako zwykły użytkownik, bez sudo. Instalator sam poprosi o autoryzację.')
+    if os.geteuid() == 0: raise RuntimeError('Run ./install.sh as your regular user, without sudo. The installer requests authorization when needed.')
     os.umask(0o077)
     fedora()
-    if Path('/run/ostree-booted').exists(): raise RuntimeError('Fedora Atomic/ostree nie jest obsługiwana przez ten instalator.')
-    print('Linux Hello — pełna instalacja dla Fedory\nKompilacja: Rust 1.99.0, GUI, YuNet/SFace, sudo i KDE.\nPAM i wzorce nie zostaną aktywowane ani zmienione przez instalację.')
-    if args.offline and not args.skip_deps: raise RuntimeError('--offline wymaga --skip-deps, żeby dnf nie używał sieci.')
+    if Path('/run/ostree-booted').exists(): raise RuntimeError('This installer does not support Fedora Atomic/ostree.')
+    print('Linux Hello — full Fedora installation\nBuild: Rust 1.99.0, GUI, YuNet/SFace, sudo and KDE.\nInstallation does not activate PAM or modify enrolled references.')
+    if args.offline and not args.skip_deps: raise RuntimeError('--offline requires --skip-deps so dnf does not access the network.')
     if args.dry_run:
-        print('1. Zależności: ' + ('pominięte' if args.skip_deps else 'dnf install ' + ' '.join(PACKAGES) + ' curl/curl-minimal'))
-        print('2. Toolchain, testy i kompilacja --locked jako użytkownik.')
-        print('3. Modele: sprawdzenie hashy; pobranie przypiętej wersji, jeśli potrzebne.')
-        print('4. ' + ('Tylko prywatny staging.' if args.build_only else 'Autoryzacja sudo, atomowa instalacja, SELinux, skrót w menu.'))
-        print('5. Uruchom Linux Hello i wybierz zastosowania twarzy w GUI.')
+        print('1. Dependencies: ' + ('skipped' if args.skip_deps else 'dnf install ' + ' '.join(PACKAGES) + ' curl/curl-minimal'))
+        print('2. Pinned toolchain, tests and --locked compilation as your regular user.')
+        print('3. Verify model hashes; download the pinned artifacts if needed.')
+        print('4. ' + ('Private staging only.' if args.build_only else 'Sudo authorization, atomic installation, SELinux and desktop shortcut.'))
+        print('5. Open Linux Hello and choose face authentication uses in the GUI.')
         return
     if not args.skip_deps: run(['/usr/bin/sudo', '/usr/bin/dnf', 'install', '-y', *dependencies()])
     cargo = rust(args.offline)
@@ -157,7 +157,7 @@ def main():
     candidates += sorted((REPO / 'work/install').glob('model-download-*/models'))
     models = next((path for path in candidates if models_valid(path)), REPO / 'work/inference/models')
     if not models_valid(models):
-        if args.offline: raise RuntimeError('Brak poprawnych modeli w work/inference/models (tryb offline).')
+        if args.offline: raise RuntimeError('No valid cached models available (offline mode).')
         root = REPO / 'work/install'; root.mkdir(parents=True, exist_ok=True)
         fresh = Path(tempfile.mkdtemp(prefix='model-download-', dir=root)) / 'models'
         run([sys.executable, REPO / 'tools/fetch-face-models.py', '--output', fresh])
@@ -167,15 +167,15 @@ def main():
         stage = Path(tmp)
         stage_files(stage, models, args.with_tpm)
         if args.build_only:
-            print('Gotowe: pełna kompilacja, testy, modele i staging sprawdzone. Nie zainstalowano plików systemowych.')
+            print('Ready: full compilation, tests, models and staging verified. No application files were installed.')
             return
         run(['/usr/bin/sudo', '/usr/bin/python3', '-B', REPO / 'packaging/installer/install-root.py', stage])
     desktop()
-    print('Gotowe! Uruchom Linux Hello z menu KDE lub poleceniem linux-hello.\nZeskanuj twarz → nadaj nazwę → wybierz sudo/logowanie/odblokowanie → Zapisz i skonfiguruj.\nSzyfrowanie wzorca używa osobnej frazy; systemowa autoryzacja używa hasła konta.')
-    if args.with_tpm: print('Po zapisaniu i aktywacji wzorca: sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-enable ' + str(os.getuid()))
+    print('Ready! Open Linux Hello from the KDE menu or run linux-hello.\nScan → name → select uses → Save and set up.\nUse a separate reference passphrase; system authorization uses your account password.')
+    if args.with_tpm: print('After saving and activating a reference: sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-enable ' + str(os.getuid()))
 
 
 if __name__ == '__main__':
     try: main()
     except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
-        print('Instalacja przerwana: ' + str(error), file=sys.stderr); sys.exit(1)
+        print('Installation stopped: ' + str(error), file=sys.stderr); sys.exit(1)

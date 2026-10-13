@@ -53,14 +53,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let fingerprints = hello_fingerprint::readers().await;
             let (found, camera_message, camera_json) = match camera {
                 Ok(Ok(found)) => {
-                    let message = if found.is_empty() { "Nie znaleziono dostępnej kamery. Sprawdź połączenie i uprawnienia sesji.".into() } else { format!("Dostępne kamery: {}. Kamera włącza się dopiero po rozpoczęciu skanu lub podglądu.", found.len()) };
+                    let message = if found.is_empty() { "No accessible camera found. Check its connection and session permissions.".into() } else { format!("Available cameras: {}. The camera stays off until you start a scan or preview.", found.len()) };
                     let json = serde_json::to_string_pretty(&found).unwrap_or_else(|_| "Device encoding failed".into());
                     (found, message, json)
                 }
                 Ok(Err(error)) => (Vec::new(), error.to_string(), "Camera diagnostics unavailable".into()),
                 Err(_) => (Vec::new(), "Camera worker failed".into(), "Camera diagnostics unavailable".into()),
             };
-            let labels: Vec<String> = found.iter().map(|d| format!("{} · {}", if d.ir_hint != hello_camera::IrHint::Unknown { "Kamera IR" } else { "Kamera" }, d.name)).collect();
+            let labels: Vec<String> = found.iter().map(|d| format!("{} · {}", if d.ir_hint != hello_camera::IrHint::Unknown { "IR camera" } else { "Camera" }, d.name)).collect();
             let selected = found.iter().position(|d| d.capture_supported && d.ir_hint != hello_camera::IrHint::Unknown).unwrap_or(0) as i32;
             let ir_preferred = found.get(selected as usize).is_some_and(|d| d.ir_hint != hello_camera::IrHint::Unknown);
             if let Ok(mut state) = state.lock() { *state = found; }
@@ -121,17 +121,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ir_emitter = ui.get_use_ir_emitter();
         stop.store(false, Ordering::Release);
         ui.set_preview_running(true);
-        ui.set_preview_message("Włączam kamerę…".into());
+        ui.set_preview_message("Starting camera…".into());
         let weak = weak.clone();
         let stop = stop.clone();
         let job = handle.spawn(async move {
             let result = run_preview(config, weak.clone(), stop, ir_emitter).await;
             let message = match result {
                 Ok(()) if ir_emitter => {
-                    "Podgląd zakończony. Kamera i podczerwień wyłączone; obrazów nie zapisano."
+                    "Preview finished. Camera released and original IR mode restored; no images were saved."
                         .into()
                 }
-                Ok(()) => "Podgląd zakończony. Kamera wyłączona; obrazów nie zapisano.".into(),
+                Ok(()) => "Preview finished. Camera is off; no images were saved.".into(),
                 Err(error) => format!("Preview stopped: {error}"),
             };
             let _ = weak.upgrade_in_event_loop(move |ui| {
@@ -159,6 +159,78 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     runtime.shutdown_timeout(Duration::from_secs(2));
     result?;
     Ok(())
+}
+
+#[cfg(all(feature = "face-diagnostics", target_os = "linux"))]
+fn configure_account_controls(
+    window: &SettingsWindow,
+    runtime: &tokio::runtime::Runtime,
+    active_job: &Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+) {
+    window.set_system_controls_available(
+        std::path::Path::new("/usr/local/libexec/linux-hello-sudo/manage-person.py").is_file(),
+    );
+    window.set_health_check_available(true);
+    for action in ["status", "pause", "remove", "health"] {
+        let weak = window.as_weak();
+        let jobs = active_job.clone();
+        let handle = runtime.handle().clone();
+        let callback = move || {
+            let Some(ui) = weak.upgrade() else {
+                return;
+            };
+            if ui.get_face_check_running()
+                || ui.get_preview_running()
+                || ui.get_refreshing()
+                || (action == "remove" && !ui.get_confirm_system_removal())
+            {
+                return;
+            }
+            ui.set_face_check_running(true);
+            ui.set_reference_io_running(true);
+            ui.set_confirm_system_removal(false);
+            ui.set_account_status(
+                if action == "health" {
+                    "Checking installation health…"
+                } else {
+                    "Authorize this account operation in the system dialog…"
+                }
+                .into(),
+            );
+            let weak = weak.clone();
+            let job = handle.spawn(async move {
+                let result = tokio::task::spawn_blocking(move || {
+                    if action == "health" { Ok((hello_cli::health::inspect().text(), None)) }
+                    else { hello_cli::account::manage(action).map(|status| (status.summary(), Some(status))) }
+                }).await;
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    ui.set_face_check_running(false);
+                    ui.set_reference_io_running(false);
+                    match result {
+                        Ok(Ok((message, status))) => {
+                            if let Some(status) = status {
+                                ui.set_system_configured(status.sudo || status.login || status.unlock);
+                                ui.set_account_status(message.into());
+                            } else {
+                                ui.set_diagnostics(message.into());
+                                ui.set_account_status("Installation health report ready in Help. This is not an authentication result.".into());
+                                ui.set_page(4);
+                            }
+                        }
+                        Ok(Err(error)) => ui.set_account_status(error.into()),
+                        Err(_) => ui.set_account_status("Account operation did not finish. Refresh status; password fallback remains available.".into()),
+                    }
+                });
+            });
+            *jobs.lock().expect("active account job mutex") = Some(job);
+        };
+        match action {
+            "status" => window.on_refresh_account_status(callback),
+            "pause" => window.on_pause_account(callback),
+            "remove" => window.on_remove_account(callback),
+            _ => window.on_run_health_check(callback),
+        }
+    }
 }
 
 #[cfg(all(feature = "face-diagnostics", target_os = "linux"))]
@@ -206,7 +278,7 @@ fn configure_face_check(
     );
     window.set_sample_target(hello_cli::diagnostics::REFERENCE_SAMPLES as i32);
     window.set_face_check_message(
-        "Wybierz kamerę i kliknij Skanuj nową twarz. Nazwę nadasz po skanowaniu.".into(),
+        "Choose a camera and select Scan a new face. Name it after scanning.".into(),
     );
     let models = std::env::var_os("LINUX_HELLO_MODELS")
         .map(std::path::PathBuf::from)
@@ -221,12 +293,13 @@ fn configure_face_check(
     if let Ok(models) = models.canonicalize() {
         window.set_models_directory(models.to_string_lossy().as_ref().into());
     } else {
-        window.set_face_check_message("Brakuje modeli rozpoznawania. Zainstaluj pełną wersję lub wybierz folder modeli w trybie deweloperskim.".into());
+        window.set_face_check_message("Recognition models are missing. Install the full application or select a model folder in developer mode.".into());
     }
     let reference = Arc::new(Mutex::new(
         hello_cli::diagnostics::SessionReference::default(),
     ));
     configure_reference_storage(window, runtime, &reference, active_job);
+    configure_account_controls(window, runtime, active_job);
     let person_reference = reference.clone();
     let person_devices = devices.clone();
     let trials = Arc::new(Mutex::new(
@@ -292,7 +365,7 @@ fn configure_face_check(
         let ir = ui.get_use_ir_emitter();
         let threshold = if action.is_recognition() {
             if ui.get_person_needs_name() {
-                ui.set_face_check_message("Najpierw nadaj zeskanowanej twarzy nazwę.".into());
+                ui.set_face_check_message("Name the scanned face first.".into());
                 return;
             }
             let result = parse_recognition_threshold(ui.get_recognition_threshold().as_str())
@@ -311,7 +384,7 @@ fn configure_face_check(
                 Ok(threshold) => Some(threshold),
                 Err(error) => {
                     ui.set_recognition_state(4);
-                    ui.set_recognition_title("Nie można rozpocząć rozpoznawania".into());
+                    ui.set_recognition_title("Cannot start recognition".into());
                     ui.set_face_check_message(format!("Recognition unavailable: {error}").into());
                     if action.trial_label().is_some() {
                         ui.set_trial_message(format!("Trial unavailable: {error}").into());
@@ -327,12 +400,12 @@ fn configure_face_check(
         ui.set_preview_image(slint::Image::default());
         ui.set_face_check_running(true);
         ui.set_face_check_message(if action.is_recognition() {
-            "Rozpoznaję osobę… Spójrz w kamerę i zatrzymaj głowę. Stop anuluje próbę.".into()
+            "Recognizing… Look at the camera and hold still. Stop cancels this attempt.".into()
         } else if action == FaceAction::CompareThree {
             "Comparing 3 fresh samples… Look at the camera and hold still. Stop cancels the series."
                 .into()
         } else if action != FaceAction::Check {
-            "Pobieram ujęcie… Zatrzymaj głowę. Stop anuluje bieżącą próbkę.".into()
+            "Capturing a sample… Hold still. Stop cancels the current sample.".into()
         } else {
             "Checking face detection… Stop cancels the check.".into()
         });
@@ -372,7 +445,7 @@ fn configure_face_check(
                         display_alive.store(false,Ordering::Release);
                         let _=weak.upgrade_in_event_loop(move |ui| {
                             ui.set_face_check_running(false);ui.set_scan_frame_available(false);ui.set_preview_image(slint::Image::default());
-                            ui.set_recognition_state(4);ui.set_recognition_title("Nie udało się uruchomić skanera".into());
+                            ui.set_recognition_state(4);ui.set_recognition_title("Cannot start scanning".into());
                             ui.set_face_check_message(format!("{error}").into());
                             ui.set_diagnostics(serde_json::to_string_pretty(&diagnostic).unwrap().into());
                         });
@@ -410,8 +483,8 @@ fn configure_face_check(
                     sync_person_ui(&ui, &reference.lock().expect("session reference mutex"));
                     ui.set_diagnostics(serde_json::to_string_pretty(&capture_report).unwrap().into());
                     ui.set_face_check_message(match result {
-                        Ok(_) => "Twarz zeskanowana. Nadaj jej nazwę, a potem zeskanuj ponownie, aby ją rozpoznać.".into(),
-                        Err(error) => format!("Skan zatrzymany: {error}. Przyjęte ujęcia zostały zachowane — możesz kontynuować.").into(),
+                        Ok(_) => "Face scanned. Give it a name, then scan again to verify it.".into(),
+                        Err(error) => format!("Scan stopped: {error}. Accepted samples were kept; you can resume.").into(),
                     });
                 });
                 return;
@@ -426,9 +499,9 @@ fn configure_face_check(
                             let changed = previous_step != Some(step); previous_step = Some(step);
                             let weak=progress_ui.clone();let capture=live.as_ref().expect("live recognition session").clone();let cancel=cancel.clone();
                             async move {
-                                if changed { let _ = weak.upgrade_in_event_loop(move |ui| { ui.set_recognition_title(step.instruction().into()); ui.set_face_check_message(if step == hello_cli::diagnostics::MotionStep::Front { "Patrz prosto i przytrzymaj głowę. Ustalam Twoją naturalną pozycję; ruch nie jest teraz wymagany." } else { "Wystarczy niewielki skręt; pokaż oba oczy i zatrzymaj głowę." }.into()); }); }
+                                if changed { let _ = weak.upgrade_in_event_loop(move |ui| { ui.set_recognition_title(step.instruction().into()); ui.set_face_check_message(if step == hello_cli::diagnostics::MotionStep::Front { "Look straight ahead and hold still. Establishing your natural position; no movement is needed yet." } else { "Only a small turn is needed. Keep both eyes visible and hold still." }.into()); }); }
                                 // Give the person time to perform the measured pose, polling Stop.
-                                for _ in 0..if changed {30} else {8} { if cancel.load(Ordering::Acquire) { return Err("Rozpoznawanie anulowane".into()); } tokio::time::sleep(Duration::from_millis(100)).await; }
+                                for _ in 0..if changed {30} else {8} { if cancel.load(Ordering::Acquire) { return Err("Recognition cancelled".into()); } tokio::time::sleep(Duration::from_millis(100)).await; }
                                 capture.lock().await.next_sample().await
                             }
                         }, move |feedback| {
@@ -443,12 +516,12 @@ fn configure_face_check(
                         || {let capture=live.as_ref().expect("live passive verification").clone();let cancel=cancel.clone();
                             let wait=if first {10} else {3};first=false;
                             async move {
-                                for _ in 0..wait {if cancel.load(Ordering::Acquire) {return Err("Rozpoznawanie anulowane".into());} tokio::time::sleep(Duration::from_millis(100)).await;}
+                                for _ in 0..wait {if cancel.load(Ordering::Acquire) {return Err("Recognition cancelled".into());} tokio::time::sleep(Duration::from_millis(100)).await;}
                                 capture.lock().await.next_sample().await
                             }
                         }, move |feedback| {let _=feedback_ui.upgrade_in_event_loop(move |ui| {
                             if ui.get_face_check_running() && ui.get_recognition_state()==5 {
-                                ui.set_recognition_title(format!("Patrz prosto w kamerę · {}/3",feedback.accepted).into());
+                                ui.set_recognition_title(format!("Look straight at the camera · {}/3",feedback.accepted).into());
                                 ui.set_face_check_message(feedback.hint.into());
                             }
                         });}).await
@@ -498,7 +571,7 @@ fn configure_face_check(
                             }
                             report["experimental"] = true.into();
                             report["threshold_calibrated_for_camera"] = false.into();
-                            let name = reference.lock().expect("session reference mutex").display_name().unwrap_or("Zapisana osoba").to_owned();
+                            let name = reference.lock().expect("session reference mutex").display_name().unwrap_or("Saved person").to_owned();
                             let (title, state) = named_recognition_result(decision, &name);
                             ui.set_recognition_title(title.into());
                             ui.set_recognition_state(state);
@@ -521,7 +594,7 @@ fn configure_face_check(
                     ui.set_face_check_message(message.into());
                     if action.is_recognition() && ui.get_recognition_state() == 5 {
                         ui.set_recognition_state(4);
-                        ui.set_recognition_title("Próba przerwana — spróbuj ponownie".into());
+                        ui.set_recognition_title("Attempt interrupted — try again".into());
                     }
                     ui.set_face_check_running(false);
                     ui.set_scan_frame_available(false);
@@ -545,8 +618,8 @@ fn configure_face_check(
                     let mut reference = reference.lock().expect("session reference mutex");
                     if action == FaceAction::AddSample {
                         match reference.add_sample(&device.identity, ir, probe) {
-                            Ok(count) => { saved = true; samples = Some(count as i32); if count == hello_cli::diagnostics::REFERENCE_SAMPLES { "Gotowe! Możesz rozpoznawać tę osobę lub zapisać ją na później.".into() } else { format!("Próbka {count}/{} przyjęta. {}", hello_cli::diagnostics::REFERENCE_SAMPLES, person_instruction(count)) } },
-                            Err(error) => format!("Próbka odrzucona: {error}. {}", person_instruction(reference.enrollment_sample_count())),
+                            Ok(count) => { saved = true; samples = Some(count as i32); if count == hello_cli::diagnostics::REFERENCE_SAMPLES { "Ready! You can verify this person or save the reference for later.".into() } else { format!("Sample {count}/{} accepted. {}", hello_cli::diagnostics::REFERENCE_SAMPLES, person_instruction(count)) } },
+                            Err(error) => format!("Sample rejected: {error}. {}", person_instruction(reference.enrollment_sample_count())),
                         }
                     } else if action == FaceAction::Remember {
                         match reference.remember(device.identity, ir, probe) {
@@ -616,7 +689,7 @@ fn configure_face_check(
                     .and_then(|index| list.get(index).cloned())
             });
             let Some(device) = device else {
-                ui.set_face_check_message("Wybierz kamerę i naciśnij Skanuj twarz.".into());
+                ui.set_face_check_message("Choose a camera and select Scan face.".into());
                 return;
             };
             let mut reference = scan_reference.lock().expect("session reference mutex");
@@ -732,7 +805,7 @@ fn configure_person_actions(
                 .and_then(|index| list.get(index).cloned())
         });
         let Some(device) = device else {
-            ui.set_face_check_message("Najpierw wybierz kamerę.".into());
+            ui.set_face_check_message("Choose a camera first.".into());
             return;
         };
         {
@@ -743,7 +816,7 @@ fn configure_person_actions(
                 ui.get_person_name().as_str(),
             ) {
                 ui.set_recognition_state(0);
-                ui.set_face_check_message(format!("Podaj poprawną nazwę osoby: {error}").into());
+                ui.set_face_check_message(format!("Enter a valid name: {error}").into());
                 return;
             }
             sync_person_ui(&ui, &reference);
@@ -765,9 +838,9 @@ fn configure_person_actions(
         sync_person_ui(&ui, &reference);
         ui.set_recognition_state(0);
         ui.set_face_check_message(if reference.has_reference() {
-            "Dodawanie anulowane. Poprzednia osoba pozostaje dostępna.".into()
+            "Enrollment cancelled. The previous reference is still available.".into()
         } else {
-            "Dodawanie anulowane. Możesz rozpocząć nowy skan.".into()
+            "Enrollment cancelled. You can start a new scan.".into()
         });
     });
     let weak = window.as_weak();
@@ -785,10 +858,9 @@ fn configure_person_actions(
                 sync_person_ui(&ui, &reference);
                 ui.set_recognition_state(0);
                 ui.set_face_check_message(if was_unnamed {
-                    "Twarz gotowa. Wybierz zastosowania i zapisz konfigurację.".into()
+                    "Face ready. Choose where to use it and save the configuration.".into()
                 } else {
-                    "Nazwa zmieniona. Zapisz osobę, aby zachować zmianę po ponownym uruchomieniu."
-                        .into()
+                    "Name changed. Save the reference to keep this change after restarting.".into()
                 });
                 if was_unnamed {
                     ui.set_page(2);
@@ -796,7 +868,7 @@ fn configure_person_actions(
             }
             Err(error) => {
                 ui.set_recognition_state(0);
-                ui.set_face_check_message(format!("Nie można zmienić nazwy: {error}").into())
+                ui.set_face_check_message(format!("Cannot rename: {error}").into())
             }
         }
     });
@@ -805,15 +877,17 @@ fn configure_person_actions(
 #[cfg(any(test, all(feature = "face-diagnostics", target_os = "linux")))]
 fn person_instruction(count: usize) -> &'static str {
     match count {
-        0 => "Spójrz prosto w kamerę i zatrzymaj głowę.",
-        1 => "Nadal patrz prosto; przysuń się trochę, zachowując całą twarz w kadrze.",
-        2 => "Nadal patrz prosto; odsuń się trochę, tak aby twarz pozostała duża w podglądzie.",
-        3 => "Lekko skręć w stronę lewej krawędzi podglądu i zatrzymaj głowę.",
-        4 => "Lekko skręć w stronę prawej krawędzi podglądu i zatrzymaj głowę.",
-        5 => "Unieś delikatnie podbródek.",
-        6 => "Opuść delikatnie podbródek.",
-        7 => "Jeszcze raz spójrz prosto w kamerę.",
-        _ => "Osiem próbek gotowych — osoba dodana.",
+        0 => "Look straight at the camera and hold still.",
+        1 => "Keep looking straight ahead; move a little closer with your whole face in view.",
+        2 => {
+            "Keep looking straight ahead; move back slightly while keeping your face large in the preview."
+        }
+        3 => "Turn slightly toward the left edge of the preview and hold still.",
+        4 => "Turn slightly toward the right edge of the preview and hold still.",
+        5 => "Raise your chin slightly.",
+        6 => "Lower your chin slightly.",
+        7 => "Look straight at the camera once more.",
+        _ => "Eight samples ready — face enrolled.",
     }
 }
 
@@ -824,9 +898,9 @@ fn named_recognition_result(
 ) -> (String, i32) {
     use hello_cli::diagnostics::RecognitionDecision;
     match decision {
-        RecognitionDecision::Recognized => (format!("Rozpoznano: {name}"), 1),
-        RecognitionDecision::NotRecognized => ("Nie rozpoznano zapisanej osoby".into(), 2),
-        RecognitionDecision::Inconclusive => ("Wynik niejednoznaczny — spróbuj ponownie".into(), 3),
+        RecognitionDecision::Recognized => (format!("Recognized: {name}"), 1),
+        RecognitionDecision::NotRecognized => ("Saved person not recognized".into(), 2),
+        RecognitionDecision::Inconclusive => ("Ambiguous result — try again".into(), 3),
     }
 }
 
@@ -834,14 +908,11 @@ fn named_recognition_result(
 fn motion_progress_title(feedback: &hello_cli::diagnostics::MotionProgress) -> String {
     use hello_cli::diagnostics::MotionStep;
     if feedback.quality_rejected {
-        return format!(
-            "{} · ujęcie nieczytelne, ponawiam",
-            feedback.step.instruction()
-        );
+        return format!("{} · unclear sample, retrying", feedback.step.instruction());
     }
     match feedback.step {
         MotionStep::TurnImageLeft | MotionStep::TurnImageRight => format!(
-            "{} · ruch {}%",
+            "{} · movement {}%",
             feedback.step.instruction(),
             feedback.percent
         ),
@@ -855,7 +926,7 @@ fn parse_recognition_threshold(
 ) -> Result<hello_cli::diagnostics::RecognitionThreshold, hello_cli::face_worker::Error> {
     let threshold = hello_cli::diagnostics::RecognitionThreshold::new(text.trim().parse()?)?;
     if threshold.value() < hello_cli::diagnostics::STRICT_THRESHOLD_FLOOR {
-        return Err("Ścisłe rozpoznawanie wymaga progu co najmniej 0,80".into());
+        return Err("Strict recognition requires a threshold of at least 0.80".into());
     }
     Ok(threshold)
 }
@@ -944,10 +1015,10 @@ fn configure_reference_storage(
             zeroize::Zeroizing::new(if setup { password.to_vec() } else { Vec::new() });
         ui.set_face_check_running(true);
         ui.set_reference_io_running(true);
-        ui.set_storage_message("Przetwarzam zaszyfrowany zapis osoby…".into());
+        ui.set_storage_message("Processing the encrypted reference…".into());
         if setup {
             ui.set_system_message(
-                "Zapisuję twarz. Następnie pojawi się systemowe okno administratora.".into(),
+                "Saving the face. A system authorization dialog will follow.".into(),
             );
         }
         let reference = reference.clone();
@@ -957,8 +1028,8 @@ fn configure_reference_storage(
             let result = tokio::task::spawn_blocking(move || {
                 let mut reference = reference.lock().expect("session reference mutex");
                 let result = match action {
-                    StorageAction::Save | StorageAction::SaveAndConfigure => reference.save(&path, &password).map(|()| "Osoba zapisana.".to_string()),
-                    StorageAction::Load => reference.load(&path, &password).map(|()| "Osoba wczytana. Wróć do zakładki Osoba i wybierz oryginalną kamerę oraz tryb IR.".to_string()),
+                    StorageAction::Save | StorageAction::SaveAndConfigure => reference.save(&path, &password).map(|()| "Reference saved.".to_string()),
+                    StorageAction::Load => reference.load(&path, &password).map(|()| "Reference loaded. Open the Face tab and select the original camera and IR mode.".to_string()),
                     StorageAction::Delete => reference.delete_saved(&path).map(|removed| if removed { "Saved reference deleted; memory reference cleared.".into() } else { "No saved reference found; memory reference cleared.".into() }),
                 };
                 result.map(|message| (message, reference.template_available(), reference.reference_sample_count() as i32))
@@ -981,7 +1052,7 @@ fn configure_reference_storage(
                     match result {
                         Ok(Ok(message)) => { ui.set_system_message(message.into()); ui.set_system_configured(true); }
                         Ok(Err(message)) => { ui.set_system_message(message.into()); ui.set_system_configured(false); }
-                        Err(_) => { ui.set_system_message("Osoba zapisana, ale konfiguracja systemu nie została ukończona. Spróbuj ponownie.".into()); ui.set_system_configured(false); }
+                        Err(_) => { ui.set_system_message("Reference saved, but system setup did not finish. Try again.".into()); ui.set_system_configured(false); }
                     }
                 }
                 if success {
@@ -1017,10 +1088,12 @@ fn validate_reference_password(
     if password.len() > 1024
         || std::str::from_utf8(password).map_or(true, |p| p.chars().count() < 12)
     {
-        return Err("Wybierz osobne hasło zapisu: minimum 12 znaków, maksymalnie 1024 bajty.");
+        return Err(
+            "Choose a separate reference passphrase: at least 12 characters, at most 1024 bytes.",
+        );
     }
     if saving && password != confirmation {
-        return Err("Hasła zapisu różnią się. Wpisz oba ponownie.");
+        return Err("The reference passphrases do not match. Enter both again.");
     }
     Ok(())
 }
@@ -1137,6 +1210,8 @@ mod rendering_tests {
         slint::platform::set_platform(Box::new(Headless(backend.clone()))).unwrap();
         let ui = SettingsWindow::new().unwrap();
         ui.set_face_check_available(true);
+        ui.set_system_controls_available(true);
+        ui.set_health_check_available(true);
         ui.set_models_directory("/local/models".into());
         ui.set_face_check_message(
             "Select a camera and check face detection. This does not enroll you or enable login."
@@ -1170,8 +1245,8 @@ mod rendering_tests {
         for (width, height) in [(980, 740), (760, 660)] {
             backend.set_size(slint::PhysicalSize::new(width, height));
             ui.set_page(1);
-            ui.set_person_name("Żaneta Kowalska".into());
-            ui.set_active_person_name("Żaneta Kowalska".into());
+            ui.set_person_name("Zoë Morgan".into());
+            ui.set_active_person_name("Zoë Morgan".into());
             for state in [
                 "adding",
                 "scanning",
@@ -1198,14 +1273,14 @@ mod rendering_tests {
                 });
                 ui.set_recognition_title(
                     if state == "recognized" {
-                        "Rozpoznano: Żaneta Kowalska"
+                        "Recognized: Zoë Morgan"
                     } else {
-                        "Nie rozpoznano zapisanej osoby"
+                        "Saved person not recognized"
                     }
                     .into(),
                 );
                 ui.set_face_check_message(
-                    "Próbki pozostają lokalnie. Logowanie systemowe jest wyłączone.".into(),
+                    "Samples remain local. System authentication is not enabled by this diagnostic test.".into(),
                 );
                 let pixels = ui.window().take_snapshot().unwrap();
                 assert_eq!((pixels.width(), pixels.height()), (width, height));
@@ -1239,7 +1314,7 @@ mod diagnostic_tests {
         use hello_cli::diagnostics::RecognitionDecision;
         assert_eq!(
             named_recognition_result(RecognitionDecision::Recognized, "Jan"),
-            ("Rozpoznano: Jan".into(), 1)
+            ("Recognized: Jan".into(), 1)
         );
         for decision in [
             RecognitionDecision::NotRecognized,
@@ -1287,22 +1362,22 @@ mod diagnostic_tests {
         let mut feedback = MotionProgress {
             step: MotionStep::Front,
             percent: 0,
-            hint: "Pozycja bazowa: 1/2".into(),
+            hint: "Baseline: 1/2".into(),
             quality_rejected: false,
         };
         let title = super::motion_progress_title(&feedback);
-        assert!(title.contains("bazową"));
+        assert!(title.contains("baseline"));
         assert!(!title.contains('%'));
-        assert!(!title.contains("ruch"));
+        assert!(!title.contains("movement"));
         feedback.step = MotionStep::TurnImageLeft;
         feedback.quality_rejected = true;
         let title = super::motion_progress_title(&feedback);
-        assert!(title.contains("nieczytelne"));
+        assert!(title.contains("unclear"));
         assert!(title.starts_with(feedback.step.instruction()));
         assert!(!title.contains('%'));
         feedback.quality_rejected = false;
         feedback.percent = 70;
-        assert!(super::motion_progress_title(&feedback).contains("ruch 70%"));
+        assert!(super::motion_progress_title(&feedback).contains("movement 70%"));
     }
 
     #[test]

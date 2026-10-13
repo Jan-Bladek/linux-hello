@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Linux Hello
-Comment=Dodawanie twarzy i logowanie do konta
+Comment=Face enrollment and account authentication
 Exec=/usr/local/bin/linux-hello
 Icon=security-high
 Terminal=false

@@ -27,13 +27,16 @@ Runtime. Five landmarks are not depth or validated anti-spoofing. The threshold
 floor 0.80 is provisional. Complete eight-sample V1/V2 templates are compatible;
 models from incompatible pipelines must not be mixed.
 
-The normal full-GUI path is scan → name → select uses → **Zapisz i skonfiguruj**
+The normal full-GUI path is scan → name → select uses → **Save and set up**
 with a separate reference passphrase and system authorization. The table lists
 the retained manual alternatives. Developer controls are hidden by default.
 
 ## Reading paths
 
-- [Full Fedora installer](install-fedora.md): complete source installation and GUI activation (Polish).
+- [Account controls and health](account-management.md): self-only status, pause, removal and sanitized support reports.
+- [Related-project comparison](project-comparison.md): reviewed workflows and adopted features.
+
+- [Full Fedora installer](install-fedora.md): complete source installation and GUI activation.
 - [Installation](installation.md): default builds, diagnostics/RPMs and links to optional integrations.
 - [Inference](inference.md): exact model hashes, preprocessing, quality, lifecycle and GUI usage.
 - [Sudo integration](sudo-integration.md): protected provisioning, authentication, diagnostics and rollback.
@@ -46,7 +49,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 - [Accuracy improvements](accuracy-improvements.md) and [Howdy analysis](howdy-analysis.md): implementation decisions and prior failure analysis.
 - [Inference history](inference-history.md): archived, superseded development notes.
 - [Validation](validation.md): current evidence summary followed by a historical milestone log.
-- [Test entry points](../tests/README.md), [contributing](../CONTRIBUTING.md), [security policy](../SECURITY.md) and [authselect design](../packaging/authselect/README.md).
+- [Test entry points](../tests/README.md), [contributing](../CONTRIBUTING.md), [contributors](../CONTRIBUTORS.md), [security policy](../SECURITY.md) and [authselect design](../packaging/authselect/README.md).
 
 ## Evidence and documentation conventions
 

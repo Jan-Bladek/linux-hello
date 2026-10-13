@@ -60,11 +60,11 @@ def progress(message, recovery=False):
         print(json.dumps({'message': message}, ensure_ascii=False), flush=True)
     except BrokenPipeError:
         if not recovery:
-            raise InterruptedError('Połączenie z aplikacją zostało przerwane.')
+            raise InterruptedError('The connection to the application was interrupted.')
 
 
 def complete(result):
-    progress('Gotowe. Wybrane funkcje korzystają z zapisanej twarzy.')
+    progress('Ready. Selected uses now use the saved face.')
     print(json.dumps({'configured': result}), flush=True)
 
 
@@ -73,7 +73,7 @@ def command(args, secret=None):
                             stderr=subprocess.DEVNULL, timeout=100,
                             env={'LANG': 'C.UTF-8'})
     if result.returncode:
-        raise RuntimeError('Weryfikacja lub konfiguracja nie powiodła się. Patrz prosto w kamerę i spróbuj ponownie.')
+        raise RuntimeError('Verification or setup failed. Look straight at the camera and try again.')
 
 
 def configure(data, secret, account, sudo, kde):
@@ -98,30 +98,30 @@ def configure(data, secret, account, sudo, kde):
     try:
         profile.mkdir(mode=0o700, exist_ok=True)
         if not profile_is_private(profile):
-            raise RuntimeError('Nieprawidłowy katalog chronionego wzorca.')
+            raise RuntimeError('Invalid protected reference directory.')
         if any(data[key] for key in ('sudo', 'login', 'unlock')):
-            progress('Zapisuję chroniony wzorzec. Patrz prosto w kamerę.')
+            progress('Saving the protected reference. Look straight at the camera.')
             time.sleep(3)
             framed = bytearray(struct.pack('!H', len(secret))) + secret
             try:
                 command([str(BASE / 'hello-sudo'), 'enroll-stdin', account.pw_name, data['source']], framed)
             finally:
                 framed[:] = b'\0' * len(framed)
-        progress('Konfiguruję wybrane zastosowania twarzy. Pozostań przed kamerą.')
+        progress('Configuring selected uses. Keep facing the camera.')
         if data['sudo']:
             (profile / 'pam-sudo.disabled').unlink(missing_ok=True)
             command(['/usr/bin/python3', '-B', str(BASE / 'manage.py'), 'enable', '--uid', str(uid)])
         else:
             sudo.atomic_write(profile / 'pam-sudo.disabled', b'linux-hello-sudo-disabled-v1\n', 0o600)
         if service:
-            progress('Sprawdzam logowanie KDE. Patrz prosto — dwa krótkie testy.')
+            progress('Checking KDE sign-in. Look straight ahead for two short checks.')
             command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'enable', '--user', account.pw_name, '--service', service])
         else:
             # Disable own display-manager opt-in without changing other accounts.
             for candidate in kde.SERVICES:
                 if (profile / f'pam-{candidate}.enabled').exists():
                     command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'disable', '--user', account.pw_name, '--service', candidate])
-        progress('Sprawdzam odblokowanie ekranu.' if data['unlock'] else 'Wyłączam odblokowanie twarzą dla tego konta.')
+        progress('Checking screen unlock.' if data['unlock'] else 'Disabling face unlock for this account.')
         if data['unlock'] or (profile / 'pam-kde.enabled').exists():
             command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'),
                      'enable' if data['unlock'] else 'disable', '--user', account.pw_name, '--service', 'kde'])
@@ -129,7 +129,7 @@ def configure(data, secret, account, sudo, kde):
         complete(result)
         return result
     except BaseException:
-        progress('Przywracam poprzednią konfigurację. Hasło pozostaje dostępne.', recovery=True)
+        progress('Restoring the previous configuration. Password fallback remains available.', recovery=True)
         for path, before in snapshots.items():
             if before is None:
                 path.unlink(missing_ok=True)
@@ -142,10 +142,10 @@ def configure(data, secret, account, sudo, kde):
 
 def main():
     if os.geteuid() != 0 or len(sys.argv) != 1:
-        raise RuntimeError('Uruchom konfigurację przez aplikację i systemową autoryzację.')
+        raise RuntimeError('Run setup through the application and system authorization.')
     uid = int(os.environ.get('PKEXEC_UID', '-1'))
     if uid < 1000:
-        raise RuntimeError('Brak autoryzowanego konta użytkownika.')
+        raise RuntimeError('No authorized user account.')
     account = pwd.getpwuid(uid)
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     # All code imports come from fixed administrator-owned installed siblings.
@@ -154,10 +154,10 @@ def main():
         for parent in reversed(path.parents):
             meta = parent.lstat()
             if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
-                raise RuntimeError('Niebezpieczny katalog konfiguratora.')
+                raise RuntimeError('Unsafe setup helper directory.')
         meta = path.lstat()
         if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022 or meta.st_nlink != 1:
-            raise RuntimeError('Niebezpieczny plik konfiguratora.')
+            raise RuntimeError('Unsafe setup helper file.')
     sudo = load('hello_management', BASE / 'manage.py')
     sudo.protected(Path(__file__).absolute())
     for path in (BASE / 'manage.py', BASE / 'manage-kde.py', BASE / 'hello-sudo'):
@@ -165,11 +165,11 @@ def main():
     kde = load('hello_kde_management', BASE / 'manage-kde.py')
     # Never hold a global configuration lock waiting on an unresponsive sender.
     if not select.select([sys.stdin], [], [], 15)[0]:
-        raise RuntimeError('Przekroczono czas przesłania konfiguracji.')
+        raise RuntimeError('Setup request timed out.')
     data, secret = request(sys.stdin.buffer)
     os.umask(0o077)
     def interrupted(*_):
-        raise InterruptedError('Konfiguracja anulowana')
+        raise InterruptedError('Setup cancelled')
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
     signal.signal(signal.SIGALRM, interrupted)

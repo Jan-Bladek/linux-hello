@@ -51,8 +51,7 @@ without symlink traversal and does not alter the original GUI store. It requires
 root and decrypts the envelope bound to the intended account UID. A random root
 key encrypts the imported template under `/var/lib/linux-hello/sudo/<uid>` (0700;
 key, config and template 0600). The account name comes from NSS, not a display
-label. A local-only save does not change the sudo copy. The unified GUI **Zapisz i
-skonfiguruj** deliberately updates it after system authorization and live checks.
+label. A local-only save does not change the sudo copy. The unified GUI **Save and set up** deliberately updates it after system authorization and live checks.
 See [unified setup](kde-login.md#unified-gui-setup).
 
 The installed verifier confirms the imported reference with live IR frames before

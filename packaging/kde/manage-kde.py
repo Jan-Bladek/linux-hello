@@ -34,24 +34,24 @@ class ActivationError(RuntimeError):
     """Expected, fail-closed live-test failure; no Python traceback needed."""
 
 def run_probe(command, stage):
-    print(f'Test {stage}/2. Patrz prosto, pokaz oba oczy; nie skrecaj glowy.', flush=True)
+    print(f'Check {stage}/2. Look straight ahead with both eyes visible; no head turn is needed.', flush=True)
     for remaining in (3, 2, 1):
-        print(f'Skanowanie za {remaining}...', flush=True)
+        print(f'Scanning in {remaining}...', flush=True)
         time.sleep(1)
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=40, env={'LANG':'C.UTF-8'})
     except subprocess.TimeoutExpired as error:
-        raise ActivationError(f'Test {stage}/2: przekroczono czas weryfikacji. PAM logowania nie zostal zmieniony.') from error
+        raise ActivationError(f'Test {stage}/2: verification timed out. Sign-in PAM was not changed.') from error
     report_probe(result.stdout + result.stderr)
     if result.returncode:
-        raise ActivationError(f'Test {stage}/2 odrzucony. PAM logowania nie zostal zmieniony; haslo nadal dziala. Szczegoly powyzej.')
+        raise ActivationError(f'Test {stage}/2 rejected. Sign-in PAM was not changed; password fallback remains available. See the details above.')
 
 def report_probe(output):
     """Display bounded metadata from this exact PAM invocation, never biometrics."""
     reasons = {
-        'landmark_shape_mismatch': 'geometria twarzy nie pasuje do wzorca',
-        'centroid_similarity_below_threshold': 'podobienstwo do sredniego wzorca jest za niskie',
-        'exemplar_similarity_below_threshold': 'podobienstwo do zapisanych ujec jest za niskie',
+        'landmark_shape_mismatch': 'face geometry does not match the reference',
+        'centroid_similarity_below_threshold': 'centroid similarity is below the threshold',
+        'exemplar_similarity_below_threshold': 'saved-sample similarity is below the threshold',
     }
     for line in output.splitlines():
         if line.startswith('PAM_'):
@@ -64,14 +64,14 @@ def report_probe(output):
             continue
         if not isinstance(data, dict): continue
         if 'progress' in data:
-            print(f"Ujecia {data.get('accepted_frames',0)}/3: {str(data['progress'])[:512]}", flush=True)
+            print(f"Frames {data.get('accepted_frames',0)}/3: {str(data['progress'])[:512]}", flush=True)
         if 'outcome' not in data: continue
         score, threshold = data.get('similarity'), data.get('threshold')
         if isinstance(score, (int,float)) and isinstance(threshold, (int,float)):
-            print(f'Podobienstwo: {score:.3f}; wymagane: {threshold:.3f}.', flush=True)
+            print(f'Similarity: {score:.3f}; required: {threshold:.3f}.', flush=True)
         reason = data.get('failure_reason')
-        if reason: print('Przyczyna: ' + reasons.get(str(reason), str(reason)[:1024]), flush=True)
-        if not data.get('cleanup_ok',False): print('Nie udalo sie bezpiecznie zamknac kamery; wynik odrzucony.', flush=True)
+        if reason: print('Reason: ' + reasons.get(str(reason), str(reason)[:1024]), flush=True)
+        if not data.get('cleanup_ok',False): print('Camera cleanup failed; result rejected.', flush=True)
 
 def diagnostic_stack(content):
     """Enable metadata only in the private root-owned test, never production PAM."""
@@ -207,7 +207,7 @@ def main():
         sudo.atomic_write(marker,b'linux-hello-login-v1\n',0o600)
         subprocess.run(['/usr/sbin/restorecon',str(marker)],check=True)
         try:
-            print('Patrz prosto w kamere: testuje PAM i SELinux ekranu logowania.',flush=True)
+            print('Look straight at the camera: checking sign-in PAM and SELinux.',flush=True)
             probe(args.user,updated,service)
         except BaseException:
             if not existed: marker.unlink(missing_ok=True)

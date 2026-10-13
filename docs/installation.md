@@ -3,7 +3,7 @@
 For the complete current Fedora application, use `./install.sh` as the ordinary
 desktop user. It builds face-enabled GUI/CLI and KDE-enabled PAM, verifies model
 hashes and installs the helpers without activating any account or editing PAM.
-The [full installer guide in Polish](install-fedora.md) includes dependencies,
+The [full installer guide](install-fedora.md) includes dependencies,
 first run, options, TPM, upgrades and test limits. The remaining sections describe
 manual diagnostic builds and the separate diagnostic-only RPM specification.
 
@@ -230,7 +230,7 @@ KDE setup, including the self-only locker launcher, is documented in
 
 ## Full GUI setup
 
-After sudo/KDE helper installation, the full GUI offers **Zapisz i skonfiguruj**
+After sudo/KDE helper installation, the full GUI offers **Save and set up**
 with selectable sudo, KDE login and Win + L cards. `pkexec` and a working Polkit
 agent are required. The KDE installer installs `configure-person.py`; no separate
 manual activation is needed for the selected uses after the GUI live checks pass.

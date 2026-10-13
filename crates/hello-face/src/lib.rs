@@ -714,13 +714,13 @@ mod tests {
         let mut template = template();
         let legacy = template.to_bytes().unwrap();
         assert_eq!(Template::from_bytes(&legacy).unwrap().display_name(), None);
-        template.set_display_name("  Żaneta Kowalska  ").unwrap();
-        assert_eq!(template.display_name(), Some("Żaneta Kowalska"));
+        template.set_display_name("  Zoë Morgan  ").unwrap();
+        assert_eq!(template.display_name(), Some("Zoë Morgan"));
         let restored = Template::from_bytes(&template.to_bytes().unwrap()).unwrap();
-        assert_eq!(restored.display_name(), Some("Żaneta Kowalska"));
+        assert_eq!(restored.display_name(), Some("Zoë Morgan"));
         for name in ["", " ", "Jan\n", "Jan\0", "Jan\u{202e}"] {
             assert!(template.set_display_name(name).is_err());
-            assert_eq!(template.display_name(), Some("Żaneta Kowalska"));
+            assert_eq!(template.display_name(), Some("Zoë Morgan"));
         }
         assert!(normalize_display_name(&"a".repeat(65)).is_err());
         assert!(normalize_display_name(&"😀".repeat(64)).is_ok());

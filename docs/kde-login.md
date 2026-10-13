@@ -71,8 +71,8 @@ policies require their own validation, not automatic permission expansion.
 ## Unified GUI setup
 
 The KDE installer also installs root-owned `configure-person.py`. After scanning
-and naming in the full GUI, choose **Sudo**, **Logowanie KDE** and **Odblokowanie**
-cards and select **Zapisz i skonfiguruj**. The reference is saved encrypted first;
+and naming in the full GUI, choose **Sudo**, **KDE sign-in** and **Screen unlock**
+cards and select **Save and set up**. The reference is saved encrypted first;
 `pkexec` supplies one system authorization for setup. The root helper derives the
 only account from Polkit's `PKEXEC_UID` and NSS, never the face label or an input
 UID. It accepts bounded boolean choices, a private user-reference directory and

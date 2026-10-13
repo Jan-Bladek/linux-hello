@@ -54,7 +54,7 @@ impl LiveCapture {
         observer: Option<FrameObserver>,
     ) -> Result<Self, Error> {
         if cancel.load(Ordering::Acquire) {
-            return Err("Skan anulowany".into());
+            return Err("Scan cancelled".into());
         }
         // Validate/load pinned native models under seccomp BEFORE camera access.
         let worker = Worker::spawn_stream(&executable, &models, cancel.clone())?;
@@ -64,12 +64,12 @@ impl LiveCapture {
             .await??
             .into_iter()
             .find(|d| d.path == path)
-            .ok_or("Wybierz kamerę z listy urządzeń")?;
+            .ok_or("Choose a camera from the device list")?;
         if device.identity != expected {
             return Err(hello_camera::CameraError::DeviceChanged.into());
         }
         if cancel.load(Ordering::Acquire) {
-            return Err("Skan anulowany".into());
+            return Err("Scan cancelled".into());
         }
         let emitter = if ir {
             Some(Arc::new(IrEmitterLease::acquire(&device)?))
@@ -173,15 +173,15 @@ impl LiveCapture {
         let mut inference_attempts = 0;
         while Instant::now() < deadline && inference_attempts < 4 {
             if self.cancel.load(Ordering::Acquire) {
-                return Err("Skan anulowany".into());
+                return Err("Scan cancelled".into());
             }
             if self.started.elapsed() >= Duration::from_secs(50) {
-                return Err("Upłynął czas sesji kamery. Uruchom skan ponownie.".into());
+                return Err("Camera session timed out. Start the scan again.".into());
             }
             tokio::select! {biased;
-                _=cancelled(&self.cancel)=>return Err("Skan anulowany".into()),
+                _=cancelled(&self.cancel)=>return Err("Scan cancelled".into()),
                 _=tokio::time::sleep_until(tokio::time::Instant::from_std(deadline))=>break,
-                changed=self.frames.changed()=>changed.map_err(|_|"Strumień kamery zakończył się przed uzyskaniem próbki")?,
+                changed=self.frames.changed()=>changed.map_err(|_|"Camera stream ended before a sample was captured")?,
             }
             let Some(captured) = self.frames.borrow_and_update().clone() else {
                 continue;
@@ -202,9 +202,9 @@ impl LiveCapture {
                 self.stats.dark_frames += 1;
                 self.status(
                     if histogram.white_fraction >= 0.995 {
-                        "Kamera pokazuje biały obraz — odsuń mocne światło."
+                        "The camera image is white — move strong light away."
                     } else {
-                        "Kamera pokazuje ciemny obraz — sprawdź zasłonę obiektywu i tryb IR."
+                        "The camera image is dark — check the lens shutter and IR mode."
                     }
                     .into(),
                 );
@@ -216,13 +216,10 @@ impl LiveCapture {
             hash.update(&*rgb);
             let digest: [u8; 32] = hash.finalize().into();
             if self.seen.contains(&digest) {
-                return Err("Powtórzona klatka kamery — skan przerwany".into());
+                return Err("Repeated camera frame — scan stopped".into());
             }
             self.seen.push(digest);
-            let mut worker = self
-                .worker
-                .take()
-                .ok_or("Proces rozpoznawania nie jest dostępny")?;
+            let mut worker = self.worker.take().ok_or("Recognition worker unavailable")?;
             let (returned, result) = tokio::task::spawn_blocking(move || {
                 let result = worker.infer_frame(width, height, &rgb);
                 (worker, result)
@@ -266,11 +263,11 @@ impl LiveCapture {
             if let Some(failure) = result.failure.as_ref()
                 && !matches!(failure, FaceError::PoorQuality | FaceError::FaceCount)
             {
-                return Err(format!("Model nie może przeanalizować obrazu: {failure}").into());
+                return Err(format!("The model cannot process this image: {failure}").into());
             }
             if probe.faces == Some(0) {
                 self.stats.no_face_frames += 1;
-                self.status("Nie widzę twarzy — patrz w kamerę, pokaż oba oczy.".into());
+                self.status("No face detected — look at the camera with both eyes visible.".into());
             } else {
                 self.stats.face_quality_rejections += 1;
                 let reason = probe
@@ -284,7 +281,7 @@ impl LiveCapture {
         if let Some(probe) = last {
             return Ok(probe);
         }
-        Err(super::TransientCapture("Czekam na doświetloną klatkę z kamery.").into())
+        Err(super::TransientCapture("Waiting for a properly exposed camera frame.").into())
     }
     /// Await all cleanup BEFORE publishing any recognition result.
     pub async fn close(&mut self) -> Result<(), Error> {
@@ -301,7 +298,7 @@ impl LiveCapture {
         let emitter_result = if let Some(emitter) = self.emitter.take() {
             match Arc::try_unwrap(emitter) {
                 Ok(emitter) => emitter.restore().map_err(|e| e.to_string()),
-                Err(_) => Err("Nie zwolniono kontroli emitera".into()),
+                Err(_) => Err("Emitter control was not released".into()),
             }
         } else {
             Ok(())

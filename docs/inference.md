@@ -128,18 +128,18 @@ they do not use the GUI's continuous operation. See [Howdy analysis](howdy-analy
 
 ## GUI enrollment and named references
 
-In **Osoba**, choose a camera/IR mode, stop preview and select **Skanuj nową twarz**.
+In **Face**, choose a camera/IR mode, stop preview and select **Scan a new face**.
 A scan captures eight valid samples: front, slightly nearer front, slightly farther
 front, moderate left/right, chin up/down and front. Three frontal anchors precede
 pose variation. A three-second position pause allows movement. Enrollment checks
 quality, distinct samples, geometry and consistency; rejected samples are not added.
 The positioning oval and scan animation are guides, not measured depth or liveness.
 
-Accepted samples are preserved after **Stop**; **Kontynuuj skan** resumes, while
-**Anuluj dodawanie** restores the previous reference. Completing the set replaces
+Accepted samples are preserved after **Stop**; **Resume scan** resumes, while
+**Cancel enrollment** restores the previous reference. Completing the set replaces
 one GUI reference; it does not enroll a gallery. A scan/local-only save does not modify the protected
 PAM copy; unified system setup does so only after authorization and live checks.
-Enter a name and choose **Podpisz twarz**. Names are local labels, 1–64 characters
+Enter a name and choose **Name this face**. Names are local labels, 1–64 characters
 and at most 256 UTF-8 bytes, with control/bidi formatting characters rejected.
 Rename does not require recapture; save again to persist a change.
 
@@ -152,7 +152,7 @@ benefits or incompatible model changes; passive recognition alone needs no migra
 
 ## Passive verification and diagnostics
 
-**Skanuj i rozpoznaj** compares only with the selected reference. Look straight;
+**Scan and recognize** compares only with the selected reference. Look straight;
 no head-turn calibration/challenge is required. Exactly three distinct suitable
 frames must all pass the configured threshold, centroid/exemplar and shape gates.
 The minimum across accepted frames determines the result. V2 uses the median of
@@ -167,7 +167,7 @@ changed reference, model/camera errors and cancellation abort. Partial results
 cannot be recognized, and all cleanup must finish before the displayed result.
 
 Settings retains **Check face**, single-reference comparison, **Compare 3 samples**,
-and **Test ruchu głowy (diagnostyka)**. Comparison-only results are mathematical
+and **Head movement test (diagnostics)**. Comparison-only results are mathematical
 scores. The optional five-stage motion experiment is separate from normal
 verification and is not validated PAD. Its earlier development is archived in
 [inference history](inference-history.md).
@@ -179,10 +179,10 @@ aggregate counts are not an independent FAR/FRR study or calibration dataset.
 
 ## Multi-sample encrypted diagnostic reference
 
-After naming, Settings offers application cards and **Zapisz i skonfiguruj**.
+After naming, Settings offers application cards and **Save and set up**.
 This saves the GUI reference and performs [unified system setup](kde-login.md#unified-gui-setup).
 Developer mode retains the local-only save and inference controls. Use
-**Wczytaj osobę** in Settings to load the GUI reference. Saving requires
+**Load reference** in Settings to load the GUI reference. Saving requires
 a separate passphrase of at least 12 Unicode characters, at most 1024 UTF-8 bytes,
 entered twice. Loading uses the first field. Input fields are cleared when work
 starts; keys/passphrase buffers are zeroizing, but Slint shared strings are not

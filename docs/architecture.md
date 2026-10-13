@@ -110,3 +110,13 @@ because an experimental PAM service has been explicitly enabled.
 
 See [authentication flow](authentication-flow.md), [installation](installation.md)
 and [upstream research](research.md) for the concrete gates and operating steps.
+
+## Self-account management and health
+
+`manage-person.py` is a fixed root-owned sibling authorized by pkexec/sudo, bound
+to the trusted subject UID. It provides management metadata, pause and confirmed
+removal without a camera or authentication verdict. Changes reuse existing service
+managers, serialize on the setup lock and restore snapshots on expected failures.
+The GUI and CLI use bounded replies with exact UID/action checks. The unprivileged
+health report lives in `hello-cli`; it never accesses protected reference contents.
+See [account controls](account-management.md).

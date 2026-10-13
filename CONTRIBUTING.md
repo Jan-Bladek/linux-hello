@@ -63,3 +63,7 @@ Record dated measurements in [validation](docs/validation.md); mark superseded
 behavior as historical rather than leaving competing instructions in current guides.
 Update dependent components and their documentation together when changing a model,
 template format, caller privilege, worker protocol or supported PAM service.
+
+User-facing UI, messages and project documentation use English. User-provided names
+remain Unicode-capable and must not be translated or changed during an upgrade.
+See [contributors](CONTRIBUTORS.md) for project and AI-assistance attribution.

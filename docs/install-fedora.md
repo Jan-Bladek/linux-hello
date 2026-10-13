@@ -1,28 +1,27 @@
-# Instalacja Linux Hello na Fedorze
+# Install Linux Hello on Fedora
 
-Zalecana metoda to instalator ze źródeł. Przygotowuje pełne GUI, rozpoznawanie
-YuNet/SFace, helpery sudo/KDE, moduł PAM i reguły SELinux. Stary spec RPM służy
-wyłącznie do diagnostyki; nie jest paczką pełnej aplikacji. Paczka DEB nie jest
-odpowiednia dla docelowej Fedory. Gotowe binarne RPM i podpisane repozytorium
-pakietów pozostają osobnym etapem wymagającym testów cyklu instalacji/usuwania.
+The recommended full installation builds from source. It prepares the GUI,
+YuNet/SFace recognition, sudo/KDE helpers, PAM module and SELinux rules. The older
+RPM spec packages diagnostics only. Binary RPM distribution, signed repositories
+and package removal/upgrade qualification remain separate work.
 
-## Wymagania
+## Requirements
 
-- Zwykła, modyfikowalna Fedora 44 lub nowsza, najlepiej KDE Plasma. Testowano Fedorę 44.
-- Konto użytkownika z możliwością autoryzacji sudo oraz Polkit w sesji graficznej.
-- Internet przy pierwszej instalacji: pakiety Fedory, Rust, zależności Cargo i modele.
-- Wolne miejsce na kompilację i czas na zbudowanie GUI/OpenCV; kompilator Rust 1.99.0.
-- Zgodna kamera. Automatyczne sterowanie emiterem IR dotyczy wyłącznie
-  [sprawdzonego sprzętu](hardware-support.md), nie każdej kamery reklamowanej jako IR.
+- Mutable Fedora 44 or later; KDE Plasma is the tested desktop. Tests ran on Fedora 44.
+- A regular desktop account with sudo authorization and a working Polkit agent.
+- Internet for the first installation: Fedora packages, Rust, Cargo dependencies and models.
+- Free space and time to compile the GUI/OpenCV integration with Rust 1.99.0.
+- A compatible camera. Automatic emitter control is limited to the
+  [tested hardware](hardware-support.md), not every camera advertised as infrared.
 
-Fedora Atomic/ostree i dystrybucje Debian/Ubuntu nie są obsługiwane przez ten
-instalator. Logowanie i blokada ekranu dotyczą KDE; na innych desktopach wybierz
-w GUI tylko obsługiwane zastosowania. PAD i reprezentatywne NIR FAR/FRR nie są
-zakwalifikowane; hasło pozostaje dostępne.
+The installer does not support Fedora Atomic/ostree or Debian/Ubuntu. Sign-in and
+screen unlock integrate with KDE; on another desktop select only supported uses.
+Representative NIR FAR/FRR and reviewed PAD qualification remain open. Keep your
+password available.
 
-## Jedno polecenie po pobraniu repozytorium
+## Install
 
-Jeśli nie masz jeszcze kodu:
+If you do not have the repository:
 
 ```sh
 sudo dnf install git python3
@@ -31,120 +30,119 @@ cd linux-hello
 ./install.sh
 ```
 
-**Uruchom instalator bez sudo.** Sam poprosi o autoryzację do instalacji pakietów
-Fedory i plików systemowych. Rust, Cargo, pobieranie modeli, testy i kompilacja
-wykonują się jako zwykły użytkownik. Nie kompiluj projektu jako root.
+**Run the installer without sudo.** It requests authorization for Fedora packages
+and system files. Rust, Cargo, model downloads, tests and compilation run as your
+regular user. Do not compile the project as root.
 
-Instalator:
+The installer:
 
-1. Sprawdza Fedorę i instaluje biblioteki kompilacyjne/runtime przez DNF.
-2. Używa istniejącego rustup lub pobiera oficjalny instalator Rust do prywatnego
-   katalogu użytkownika. Wybiera przypiętą wersję 1.99.0, bez zmiany globalnego
-   domyślnego toolchainu. [Oficjalna instalacja Rust](https://doc.rust-lang.org/stable/book/ch01-01-installation.html).
-3. Uruchamia testy GUI, helpera i PAM oraz sprawdza dokumentację. Buduje wszystkie
-   potrzebne binaria z `Cargo.lock`, z pełnymi feature gates dla rozpoznawania i KDE.
-4. Sprawdza rozmiary i SHA256 dwóch przypiętych modeli. Używa poprawnego lokalnego
-   cache lub jawnie pobiera modele wraz z informacjami licencyjnymi/proweniencją.
-   Modele nie są pobierane przez aplikację podczas logowania.
-5. Kompiluje probe PAM i minimalną politykę MMAP kamery. Sprawdza staging i hashe
-   przed instalacją. Wymienia pliki atomowo i przywraca poprzednie przy zwykłym
-   błędzie. Zachowuje już zainstalowane polityki; nie nadpisuje nieznanych
-   ustawień SELinux ani nie przełącza systemu w Permissive.
-6. Tworzy skrót **Linux Hello** w menu oraz polecenia `linux-hello` i `hello`.
+1. Checks Fedora and installs native development/runtime dependencies with DNF.
+2. Uses existing rustup or downloads the official Rust installer to a private user
+   directory. It selects 1.99.0 without changing the global default toolchain.
+   See [official Rust installation](https://doc.rust-lang.org/stable/book/ch01-01-installation.html).
+3. Runs GUI/helper/PAM tests and documentation checks, then builds all required
+   binaries from `Cargo.lock` with recognition and KDE feature gates.
+4. Validates the pinned models' byte sizes and SHA256 digests. It reuses a valid
+   local cache or explicitly downloads artifacts and upstream notices. Models
+   are not downloaded by the application during authentication.
+5. Builds the hardened PAM probe and minimal camera MMAP policy. Checks the
+   private stage before installation, atomically replaces files and restores
+   earlier files on ordinary failure. Retains installed policies and never
+   switches SELinux to Permissive.
+6. Adds **Linux Hello** to the desktop menu and installs `linux-hello` and `hello`.
 
-Instalacja nie zapisuje twarzy, nie zmienia `/etc/pam.d`, nie włącza żadnego konta
-ani demona. Jeśli integracje były już aktywne, aktualizacja zachowuje ich wzorce,
-klucze, progi i ustawienia. Nie usuwa danych innych użytkowników.
+Installation never enrolls a face, changes `/etc/pam.d`, activates an account or
+starts the diagnostic daemon. An update retains existing profiles, keys, thresholds
+and opt-ins. Other accounts' references are not deleted.
 
-## Pierwsze uruchomienie i aktywacja
+## First run and activation
 
-Uruchom **Linux Hello** z menu KDE albo:
+Open **Linux Hello** from KDE's menu or run:
 
 ```sh
 linux-hello
 ```
 
-Zeskanuj twarz, nadaj jej nazwę, wybierz karty **Sudo**, **Logowanie KDE** i/lub
-**Odblokowanie**, a następnie **Zapisz i skonfiguruj**. Wybierz osobną frazę
-szyfrowania wzorca: minimum 12 znaków, wpisaną dwa razy. Dla już zapisanego wzorca
-użyj jego dotychczasowej frazy. W osobnym systemowym oknie administratora używa
-się hasła konta Linux — nie frazy wzorca.
+Scan your face, name it, select **Sudo**, **KDE sign-in** and/or **Screen unlock**,
+then **Save and set up**. Choose a separate reference passphrase of at least 12
+characters and confirm it. For an existing encrypted reference, use its original
+passphrase. The separate system authorization dialog uses your Linux account
+password, not the reference passphrase.
 
-Konfiguracja wykonuje rzeczywiste skanowania i testy przed zmianą PAM. Zamknij
-podgląd kamery, patrz prosto i czekaj na wynik. Po błędzie poprzednia konfiguracja
-jest przywracana. Pełny przepływ opisano w [integracji KDE](kde-login.md#unified-gui-setup).
+Setup runs live face/PAM checks before activation. Close camera preview, face the
+camera and wait for the result. Ordinary failure restores the previous system
+state. See [unified setup](kde-login.md#unified-gui-setup).
 
-Przy odświeżaniu dotychczasowej instalacji nie musisz ponownie zapisywać twarzy.
-Zamknij stare okno aplikacji i uruchom nowe z menu. Instalator nie wylogowuje,
-nie blokuje sesji ani nie restartuje display managera.
+Updates do not require re-enrollment. Close the old window and reopen the installed
+application. The installer does not log out, lock the session or restart the
+display manager. Account controls in Overview/Settings can inspect, pause or
+remove your protected system reference; see [account management](account-management.md).
 
-## Opcje
+## Options
 
-| Polecenie | Działanie |
+| Command | Behavior |
 | --- | --- |
-| `./install.sh --dry-run` | Pokazuje plan; bez sieci, kompilacji i zmian |
-| `./install.sh --build-only` | Zależności, testy, kompilacja i sprawdzenie stagingu; bez instalacji plików aplikacji |
-| `./install.sh --skip-deps` | Pomija DNF; wymagane biblioteki muszą już być obecne |
-| `./install.sh --skip-deps --offline` | Bez sieci; wymaga toolchainu, cache Cargo, bibliotek i poprawnych modeli |
-| `./install.sh --with-tpm` | Instaluje także opcjonalną politykę dostępu TPM dla logowania KDE |
+| `./install.sh --dry-run` | Show a plan without network access, compilation or changes |
+| `./install.sh --build-only` | Prepare dependencies, tests, binaries and staging without installing application files |
+| `./install.sh --skip-deps` | Skip DNF; native dependencies must already be installed |
+| `./install.sh --skip-deps --offline` | No network; requires toolchain, Cargo cache, native libraries and valid models |
+| `./install.sh --with-tpm` | Also install the optional TPM access policy for KDE sign-in |
 
-`--build-only` sam w sobie może instalować zależności przez DNF; dodaj
-`--skip-deps`, jeśli nie chcesz tego kroku. Przykład kontroli istniejącej maszyny:
+`--build-only` alone can install dependencies with DNF. Add `--skip-deps` to skip
+that step. Example for an already provisioned workstation:
 
 ```sh
 ./install.sh --build-only --skip-deps --offline --with-tpm
 ```
 
-`--with-tpm` nie migruje kluczy i nie resetuje TPM. Po poprawnym zapisaniu
-wzorca i aktywacji wybranych usług możesz świadomie migrować klucz:
+`--with-tpm` neither migrates keys nor resets the TPM. After reference provisioning
+and successful activation, an administrator can explicitly migrate the existing key:
 
 ```sh
 sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-enable "$(id -u)"
 sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-status "$(id -u)"
 ```
 
-Migracja nie wymaga nowego skanowania. Najpierw przeczytaj [zasady i ograniczenia TPM](tpm.md).
-Już zmigrowany profil pozostaje zabezpieczony także przy aktualizacji bez `--with-tpm`.
-Instalator zachowuje istniejącą politykę TPM. Nie ma w tym trybie atestacji rozruchu.
+Migration does not require another scan. Read [TPM limits and recovery](tpm.md)
+first. Updates without `--with-tpm` retain an already sealed profile and installed
+TPM policy. This mode does not attest boot state.
 
-## Pliki, aktualizacja i powrót
+## Files, upgrades and recovery
 
-Binaria, worker, modele i skrypty znajdują się w
-`/usr/local/libexec/linux-hello-sudo/`; PAM w `/usr/lib64/security/pam_linuxhello.so`.
-Komendy są w `/usr/local/bin/`, skrót systemowy w `/usr/local/share/applications/`
-i skrót bieżącego użytkownika w `~/.local/share/applications/`. Poprzedni skrót
-użytkownika jest zachowany jako `linux-hello.desktop.before-install`.
+Binaries, workers, models and helpers live in `/usr/local/libexec/linux-hello-sudo/`;
+PAM lives in `/usr/lib64/security/pam_linuxhello.so`. Commands are in
+`/usr/local/bin/`, the system shortcut in `/usr/local/share/applications/`, and the
+current user's shortcut in `~/.local/share/applications/`. An earlier user shortcut
+is backed up as `linux-hello.desktop.before-install`.
 
-Manifest root-only `install-manifest.json` zapisuje rewizję źródeł i hashe plików.
-Dopisane `-dirty` oznacza kompilację z lokalnymi zmianami. Profile biometryczne
-pozostają oddzielnie w `/var/lib/linux-hello/sudo/`, a szyfrowany wzorzec GUI w
-katalogu danych użytkownika. Staging jest prywatny i po zakończeniu usuwany.
-Źródła, zależności Cargo i pobrane modele pozostają w cache użytkownika.
+Root-private `install-manifest.json` records source revision and file hashes.
+A `-dirty` suffix means the build included local modifications. Biometric profiles
+remain in `/var/lib/linux-hello/sudo/`; encrypted GUI references stay in the user's
+data directory. Private staging is removed on completion. Source, crate and model
+caches remain available for later builds.
 
-Aktualizacja:
+Update:
 
 ```sh
 git pull --ff-only
 ./install.sh
 ```
 
-W razie zwykłego błędu instalator przywraca poprzednie pliki, usuwa dodane przez
-niego reguły kontekstu/moduły i zachowuje wcześniejsze. Nie gwarantuje transakcji
-wielu plików przy odcięciu zasilania lub SIGKILL. Mogą pozostać puste katalogi.
+Ordinary installation errors restore earlier files and remove only newly added
+context rules/policies. This is not an atomic multi-file transaction across power
+loss or SIGKILL. Empty directories may remain.
 
-Nie usuwaj helpera ani modułu PAM, gdy logowanie twarzą jest aktywne. Najpierw
-wyłącz integracje według [sudo](sudo-integration.md) i [KDE](kde-login.md), dla
-wszystkich kont, które je wykorzystują. Ten instalator nie usuwa automatycznie
-wzorców, kluczy, konfiguracji innych administratorów ani reguł używanych przez
-inne instalacje. Nie jest zarządzany przez RPM, więc `dnf remove linux-hello`
-nie usuwa tych ręcznie zainstalowanych plików.
+Before removing helper/module files, disable integrations for every account that
+uses them using [sudo rollback](sudo-integration.md) and [KDE rollback](kde-login.md).
+The installer never automatically erases references, keys or administrator settings.
+It is not RPM-managed: `dnf remove linux-hello` does not remove these source-installed
+files. Pausing one account is separate from globally removing the application.
 
-## Zakres testów
+## Executed validation
 
-Przeszedł pełny build i staging z lokalnymi zależnościami/modelami na Fedorze 44.
-Testy instalatora obejmują nieobsługiwany system, zmienione pliki, złe modele,
-dowiązania, hardlinki, niedozwolone ścieżki i przywracanie poprzedniego PAM/helpera.
-Izolowany test sprawdził pusty zestaw plików instalacyjnych, uprawnienia i CLI,
-z istniejącymi politykami SELinux, bez rzeczywistych wzorców i aktywacji PAM.
-To nie zastępuje testu pierwszej instalacji na czystej VM ani kwalifikacji kamery.
-Szczegółowe wykonane wyniki są w [validation](validation.md).
+Full build/staging and upgrade passed on the existing Fedora 44 host with cached
+dependencies/models. Installer tests cover unsupported distributions, changed
+files, model pins, links/path injection, rollback and inert dry-run. An isolated
+file-install test used empty installation directories and existing SELinux policies,
+without real profiles or PAM activation. Fresh-VM dependency/bootstrap downloads,
+new policy installation and RPM lifecycle remain unvalidated. See [validation](validation.md).

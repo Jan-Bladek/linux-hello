@@ -178,7 +178,7 @@ impl SessionReference {
     ) -> Result<(), Error> {
         self.validate_recognition(identity, ir)?;
         if !matches!(&self.reference, Some(Reference::Multi(t)) if t.strict_available()) {
-            return Err("Zapisany wzorzec nie zawiera geometrii i poszczególnych ujęć. Zeskanuj swoją twarz ponownie; stary zapis nie wystarcza do ścisłego rozpoznawania.".into());
+            return Err("The saved reference has no geometry or individual samples. Re-enroll; the old reference cannot support strict recognition.".into());
         }
         Ok(())
     }
@@ -426,7 +426,7 @@ where
         let deadline = Instant::now() + POSE_TIME;
         let mut accepted = None;
         let mut inconsistent_frames = 0;
-        let mut last_hint = "Nie widzę czytelnej twarzy".to_owned();
+        let mut last_hint = "No clear face detected".to_owned();
         for _ in 0..8 {
             check_cancel()?;
             if Instant::now() >= deadline {
@@ -444,10 +444,10 @@ where
             };
             check_cancel()?;
             if probe.faces.is_some_and(|n| n > 1) {
-                return Err("Wymagana dokładnie jedna twarz".into());
+                return Err("Exactly one face is required".into());
             }
             if probe.faces == Some(0) {
-                last_hint = "Nie widzę twarzy — pokaż oba oczy".into();
+                last_hint = "No face detected — keep both eyes visible".into();
                 feedback(&last_hint);
                 continue;
             }
@@ -474,7 +474,7 @@ where
                         Some(hello_face::FaceError::EnrollmentPose)
                     ) =>
                 {
-                    last_hint = "Pierwsze trzy ujęcia zbieram na wprost. Nie skręcaj jeszcze głowy — przytrzymaj pozycję.".into();
+                    last_hint = "The first three samples are frontal. Keep looking straight ahead and hold still.".into();
                     feedback(&last_hint);
                     continue;
                 }
@@ -485,7 +485,7 @@ where
                     ) && inconsistent_frames < 2 =>
                 {
                     inconsistent_frames += 1;
-                    last_hint = "Ujęcie podczas skrętu nie pasuje do poprzednich. Zmniejsz skręt i przytrzymaj głowę — ponawiam".into();
+                    last_hint = "This turned sample is inconsistent. Reduce the turn and hold still — retrying".into();
                     feedback(&last_hint);
                     continue;
                 }
@@ -494,7 +494,7 @@ where
         }
         check_cancel()?;
         count = accepted.ok_or_else(|| {
-            format!("{last_hint}. Upłynął czas tego ujęcia; przyjęte próbki zachowano.")
+            format!("{last_hint}. This sample timed out; accepted samples were kept.")
         })?;
     }
     progress(count);
@@ -795,11 +795,11 @@ pub enum MotionStep {
 impl MotionStep {
     pub fn instruction(self) -> &'static str {
         match self {
-            Self::Front => "Patrz prosto — ustalam pozycję bazową (1/5)",
-            Self::TurnImageLeft => "Lekko skręć głowę w stronę lewej krawędzi podglądu",
-            Self::TurnImageRight => "Lekko skręć głowę w stronę prawej krawędzi podglądu",
-            Self::ReturnFront => "Wróć do patrzenia prosto (3/5)",
-            Self::FinishFront => "Ponownie patrz prosto — kończę sprawdzanie (5/5)",
+            Self::Front => "Look straight ahead — establishing baseline (1/5)",
+            Self::TurnImageLeft => "Turn slightly toward the left edge of the preview",
+            Self::TurnImageRight => "Turn slightly toward the right edge of the preview",
+            Self::ReturnFront => "Look straight ahead again (3/5)",
+            Self::FinishFront => "Look straight ahead again — finishing the check (5/5)",
         }
     }
     fn reached(self, yaw: f32, baseline: f32) -> bool {
@@ -833,23 +833,23 @@ impl MotionStep {
             Self::TurnImageLeft | Self::TurnImageRight => {
                 let percent = (signed / 0.06 * 100.0).clamp(0.0, 100.0) as u8;
                 let hint = if signed < -0.02 {
-                    "Skręcasz w przeciwną stronę — kieruj się krawędzią podglądu wskazaną w poleceniu."
+                    "You are turning the opposite way — follow the indicated edge of the preview."
                 } else if signed > 0.45 {
-                    "Skręt jest za duży. Obróć głowę trochę z powrotem; oba oczy powinny być widoczne."
+                    "The turn is too large. Turn back slightly; keep both eyes visible."
                 } else if percent >= 100 {
-                    "Ruch zmierzony. Przytrzymaj tę pozycję."
+                    "Movement measured. Hold this position."
                 } else {
-                    "Wystarczy mały skręt głowy. Nie przechylaj jej ani nie przesuwaj całego ciała."
+                    "Only a small head turn is needed. Avoid tilting your head or moving your whole body."
                 };
                 (percent, hint)
             }
             Self::Front => (
                 0,
-                "Ustalam Twoją naturalną pozycję. Przytrzymaj głowę; na tym etapie nie wykonuj skrętu.",
+                "Establishing your natural position. Hold still; do not turn yet.",
             ),
             _ => (
                 if self.reached(yaw, baseline) { 100 } else { 0 },
-                "Wróć do pozycji początkowej i przytrzymaj głowę.",
+                "Return to the initial position and hold still.",
             ),
         };
         MotionProgress {
@@ -862,13 +862,13 @@ impl MotionStep {
 }
 fn quality_hint(reason: &str) -> String {
     match reason {
-        "face exposure is too dark; adjust lighting or IR mode" => "Twarz jest za ciemna. Poczekaj na ekspozycję; ustaw twarz bliżej środka podglądu.",
-        "face exposure is too bright; adjust lighting or IR mode" => "Twarz jest za jasna. Odsuń się trochę od kamery lub mocnego światła.",
-        "face exposure contains too many clipped pixels; adjust lighting or IR distance" => "Część twarzy jest prześwietlona lub bardzo ciemna. Odsuń się trochę i zachowaj oba oczy w kadrze.",
-        "move closer so the camera sees more detail in your face" => "Twarz jest za mała w obrazie. Przysuń się do kamery, zachowując całą twarz w kadrze.",
-        "move back or toward the center; keep the whole face inside the image" => "Twarz wychodzi poza kadr lub jest za blisko. Odsuń się trochę i ustaw ją pośrodku podglądu.",
-        "face detail is too soft; hold still and check the lens" => "Brakuje szczegółów twarzy. Przytrzymaj głowę nieruchomo i sprawdź czystość obiektywu.",
-        _ => "Ujęcie chwilowo nieczytelne. Przytrzymaj głowę, pozostaw oba oczy w kadrze — ponawiam próbę.",
+        "face exposure is too dark; adjust lighting or IR mode" => "Your face is too dark. Wait for exposure and move toward the center of the preview.",
+        "face exposure is too bright; adjust lighting or IR mode" => "Your face is too bright. Move back slightly from the camera or strong light.",
+        "face exposure contains too many clipped pixels; adjust lighting or IR distance" => "Part of your face is clipped or very dark. Move back slightly and keep both eyes in view.",
+        "move closer so the camera sees more detail in your face" => "Your face is too small in the image. Move closer with your whole face in view.",
+        "move back or toward the center; keep the whole face inside the image" => "Your face is outside the frame or too close. Move back slightly and center it.",
+        "face detail is too soft; hold still and check the lens" => "Not enough facial detail. Hold still and check that the lens is clean.",
+        _ => "This sample is temporarily unclear. Hold still with both eyes visible — retrying.",
     }.into()
 }
 
@@ -922,7 +922,7 @@ where
 {
     let check_cancel = || -> Result<(), Error> {
         if cancel.load(Ordering::Acquire) {
-            Err("Rozpoznawanie anulowane".into())
+            Err("Recognition cancelled".into())
         } else {
             Ok(())
         }
@@ -951,7 +951,7 @@ where
         let mut weak_turn_frames = 0;
         let mut turn_window = BaselineWindow::default();
         let mut reached = false;
-        let mut last_hint = "Nie potwierdzono wymaganego ruchu".to_owned();
+        let mut last_hint = "Required movement was not confirmed".to_owned();
         let deadline = Instant::now() + POSE_TIME;
         for _ in 0..POSE_ATTEMPTS {
             check_cancel()?;
@@ -963,7 +963,7 @@ where
                 Err(error) if error.is::<TransientCapture>() => {
                     check_cancel()?;
                     turn_window = BaselineWindow::default();
-                    last_hint = format!("{error} Nadal czekam na czytelne ujęcie.");
+                    last_hint = format!("{error} Still waiting for a clear sample.");
                     progress(MotionProgress {
                         step,
                         percent: 0,
@@ -976,14 +976,14 @@ where
             };
             check_cancel()?;
             if digests.contains(&probe.frame_digest) {
-                return Err("Powtórzona klatka: kontrola ruchu przerwana".into());
+                return Err("Repeated frame: movement check stopped".into());
             }
             digests.push(probe.frame_digest);
             attempts += probe.report["sample_capture_attempts"]
                 .as_u64()
                 .unwrap_or(1);
             if probe.faces.is_some_and(|n| n > 1) {
-                return Err("Wymagana dokładnie jedna twarz".into());
+                return Err("Exactly one face is required".into());
             }
             // Retry only acquisition/quality rejection. Never retry a worker/protocol error
             // or reinterpret low identity evidence as an exposure problem.
@@ -1008,7 +1008,7 @@ where
                     || rejection == "exactly one face is required"
                 {
                     turn_window = BaselineWindow::default();
-                    last_hint="Nie widzę wyraźnej twarzy. Zmniejsz skręt, pokaż oba oczy — ponawiam ujęcie.".into();
+                    last_hint="No clear face detected. Reduce the turn with both eyes visible — retrying.".into();
                     progress(MotionProgress {
                         step,
                         percent: 0,
@@ -1017,16 +1017,16 @@ where
                     });
                     continue;
                 }
-                return Err("Nieprawidłowy wynik modelu; kontrola przerwana".into());
+                return Err("Invalid model output; check stopped".into());
             }
             if probe.sample_quality.is_none() {
-                return Err("Nie można ocenić jakości twarzy".into());
+                return Err("Cannot assess face quality".into());
             }
             let geometry = probe
                 .geometry
                 .as_ref()
                 .filter(|g| g.valid())
-                .ok_or("Brak prawidłowej geometrii twarzy")?;
+                .ok_or("Valid face geometry unavailable")?;
             let feedback = step.progress(geometry.yaw(), baseline);
             last_hint = feedback.hint.clone();
             progress(feedback);
@@ -1035,7 +1035,7 @@ where
                 let locked = reference.lock().map_err(|_| "reference unavailable")?;
                 locked.validate_strict_recognition(identity, ir)?;
                 if locked.revision != expected_revision {
-                    return Err("Wzorzec zmienił się podczas rozpoznawania".into());
+                    return Err("Reference changed during recognition".into());
                 }
                 let Some(Reference::Multi(template)) = &locked.reference else {
                     return Err("reference unavailable".into());
@@ -1047,7 +1047,7 @@ where
             };
             let score = evidence.score;
             if !score.is_finite() {
-                return Err("Nieprawidłowy wynik porównania".into());
+                return Err("Invalid comparison result".into());
             }
             // During a turn, allow only two unusable identity observations in
             // total. They never count as owner evidence or complete a stage.
@@ -1056,7 +1056,7 @@ where
                     weak_turn_frames += 1;
                     transition_identity_retries += 1;
                     turn_window = BaselineWindow::default();
-                    last_hint = "Ujęcie podczas ruchu nie potwierdza twarzy. Zatrzymaj niewielki skręt i pokaż oba oczy — ponawiam.".into();
+                    last_hint = "The moving sample does not confirm this face. Hold a small turn with both eyes visible — retrying.".into();
                     progress(MotionProgress {
                         step,
                         percent: 0,
@@ -1088,11 +1088,9 @@ where
                     // do not establish a universal zero-yaw frontal position.
                     baseline = measured_baseline;
                     progress(MotionProgress {step,percent:0,quality_rejected:false,
-                        hint:"Pozycja bazowa ustalona z dwóch stabilnych ujęć. Za chwilę pokażę kierunek skrętu.".into()});
+                        hint:"Baseline established from two stable samples. A turn direction will follow.".into()});
                 } else {
-                    last_hint =
-                        "Pozycja bazowa: 1/2 ujęć. Przytrzymaj głowę nieruchomo, pokaż oba oczy."
-                            .into();
+                    last_hint = "Baseline: 1/2 samples. Hold still with both eyes visible.".into();
                     progress(MotionProgress {
                         step,
                         percent: 0,
@@ -1109,7 +1107,7 @@ where
                     .observe(geometry.yaw(), Instant::now())
                     .is_none()
             {
-                last_hint = "Skręt zmierzony: 1/2 stabilnych ujęć. Przytrzymaj lekki skręt; nie obracaj głowy dalej.".into();
+                last_hint = "Turn measured: 1/2 stable samples. Hold this slight turn; do not turn further.".into();
                 progress(MotionProgress {
                     step,
                     percent: 100,
@@ -1124,7 +1122,7 @@ where
         }
         if !reached {
             return Err(format!(
-                "Nie zakończono etapu: {}. {last_hint} Spróbuj ponownie.",
+                "Stage incomplete: {}. {last_hint} Try again.",
                 step.instruction()
             )
             .into());
@@ -1738,7 +1736,7 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(error.to_string().contains("Powtórzona"));
+        assert!(error.to_string().contains("Repeated"));
     }
     #[tokio::test]
     async fn passive_cancellation_reference_change_multiple_faces_and_worker_errors_fail_closed() {
@@ -1760,7 +1758,7 @@ mod tests {
             .await
             .unwrap_err()
             .to_string()
-            .contains("jedna twarz")
+            .contains("one face")
         );
         let mut calls = 0;
         assert!(
@@ -1794,7 +1792,7 @@ mod tests {
             .await
             .unwrap_err()
             .to_string()
-            .contains("Wzorzec zmienił")
+            .contains("Reference changed")
         );
         assert!(
             verify_person_observed(
@@ -1811,7 +1809,7 @@ mod tests {
             .await
             .unwrap_err()
             .to_string()
-            .contains("anulowane")
+            .contains("cancelled")
         );
     }
 
@@ -1836,7 +1834,7 @@ mod tests {
             },
         )
         .await;
-        assert!(result.unwrap_err().to_string().contains("anulowane"));
+        assert!(result.unwrap_err().to_string().contains("cancelled"));
     }
 
     #[tokio::test]
@@ -1881,7 +1879,7 @@ mod tests {
         })
         .await;
         assert_eq!(calls, POSE_ATTEMPTS as u8);
-        assert!(result.unwrap_err().to_string().contains("Pozycja bazowa"));
+        assert!(result.unwrap_err().to_string().contains("Baseline"));
     }
     #[tokio::test]
     async fn baseline_observations_are_included_in_stricter_user_threshold() {
@@ -1942,7 +1940,7 @@ mod tests {
         assert!(!MotionStep::TurnImageLeft.reached(-0.5, 0.0));
         let feedback = MotionStep::TurnImageLeft.progress(0.08, 0.0);
         assert_eq!(feedback.percent, 0);
-        assert!(feedback.hint.contains("przeciwną"));
+        assert!(feedback.hint.contains("opposite"));
     }
     #[tokio::test]
     async fn recognition_waits_through_eight_bad_frames_then_completes_all_poses() {
@@ -2090,8 +2088,8 @@ mod tests {
             result.classify(RecognitionThreshold::new(0.8).unwrap()),
             RecognitionDecision::Recognized
         );
-        assert!(feedbacks.iter().any(|s| s.contains("za jasna")));
-        assert!(feedbacks.iter().any(|s| s.contains("za ciemna")));
+        assert!(feedbacks.iter().any(|s| s.contains("too bright")));
+        assert!(feedbacks.iter().any(|s| s.contains("too dark")));
     }
     #[tokio::test]
     async fn persistent_bad_exposure_stops_bounded_with_useful_reason() {
@@ -2110,7 +2108,7 @@ mod tests {
         })
         .await;
         assert_eq!(id, 40 + POSE_ATTEMPTS as u8);
-        assert!(result.unwrap_err().to_string().contains("za jasna"));
+        assert!(result.unwrap_err().to_string().contains("too bright"));
     }
     #[tokio::test]
     async fn strict_recognition_requires_all_measured_poses_without_claiming_pad() {
@@ -2152,7 +2150,7 @@ mod tests {
             std::future::ready(Ok(geometric_probe(40, step_yaw(step), vec![1.0, 0.0])))
         })
         .await;
-        assert!(result.unwrap_err().to_string().contains("Powtórzona"));
+        assert!(result.unwrap_err().to_string().contains("Repeated"));
     }
     #[tokio::test]
     async fn transient_turn_identity_and_shape_misses_need_two_stable_owner_frames() {
@@ -2269,7 +2267,7 @@ mod tests {
         assert_eq!(result, 8);
         assert_eq!(calls, 10);
         assert_eq!(hints.len(), 2);
-        assert!(hints.iter().all(|hint| hint.contains("Zmniejsz skręt")));
+        assert!(hints.iter().all(|hint| hint.contains("Reduce the turn")));
         let r = reference.lock().unwrap();
         assert_eq!(r.reference_sample_count(), 8);
     }
@@ -2375,7 +2373,7 @@ mod tests {
             std::future::ready(Ok(geometric_probe(40, step_yaw(step), vec![1.0, 0.0])))
         })
         .await;
-        assert!(result.unwrap_err().to_string().contains("zmienił"));
+        assert!(result.unwrap_err().to_string().contains("changed"));
     }
     #[test]
     fn encrypted_reference_preserves_strict_features_and_geometry() {
@@ -2390,22 +2388,22 @@ mod tests {
                 .add_sample(&identity(), true, geometric_probe(id, 0.0, values))
                 .unwrap();
         }
-        reference.rename("Właściciel").unwrap();
+        reference.rename("Owner").unwrap();
         reference.save(&path, password).unwrap();
         let mut loaded = SessionReference::default();
         loaded.load(&path, password).unwrap();
         loaded
             .validate_strict_recognition(&identity(), true)
             .unwrap();
-        assert_eq!(loaded.display_name(), Some("Właściciel"));
+        assert_eq!(loaded.display_name(), Some("Owner"));
         for entry in std::fs::read_dir(&path).unwrap() {
             let entry = entry.unwrap();
             if entry.file_type().unwrap().is_file() {
                 let encrypted = std::fs::read(entry.path()).unwrap();
                 assert!(
                     !encrypted
-                        .windows("Właściciel".len())
-                        .any(|w| w == "Właściciel".as_bytes())
+                        .windows("Owner".len())
+                        .any(|w| w == "Owner".as_bytes())
                 );
                 assert!(!encrypted.windows(6).any(|w| w == b"ratios"));
             }
@@ -2642,20 +2640,20 @@ mod tests {
             original.add_sample(&identity(), true, sample(id)).unwrap();
         }
         original.save(&path, password).unwrap();
-        original.rename("Żaneta Kowalska").unwrap();
+        original.rename("Zoë Morgan").unwrap();
         original.save(&path, password).unwrap();
         let encrypted = std::fs::read(path.join("template.lht")).unwrap();
         assert!(
             !encrypted
-                .windows("Żaneta Kowalska".len())
-                .any(|window| window == "Żaneta Kowalska".as_bytes())
+                .windows("Zoë Morgan".len())
+                .any(|window| window == "Zoë Morgan".as_bytes())
         );
         assert!(original.save(&path, b"different reference phrase").is_err());
         assert_eq!(std::fs::read(path.join("template.lht")).unwrap(), encrypted);
         drop(original);
         let mut reopened = SessionReference::default();
         reopened.load(&path, password).unwrap();
-        assert_eq!(reopened.display_name(), Some("Żaneta Kowalska"));
+        assert_eq!(reopened.display_name(), Some("Zoë Morgan"));
         assert!(reopened.template_available());
         assert_eq!(
             reopened.compare(&identity(), true, &sample(4)).unwrap(),

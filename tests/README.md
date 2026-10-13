@@ -148,3 +148,12 @@ integrity, path/link rejection and rollback. `packaging/installer/test-install.p
 is an explicit root-only private-namespace file-install test; it requires a
 prepared private stage and already installed KDE/TPM policies, and never uses
 real biometric profiles or edits PAM. See [installer guide](../docs/install-fedora.md).
+
+## Self-account management and health
+
+`tests/test_account_management.py` covers trusted subject binding, metadata-only
+status, own-account pause/removal, other-account isolation and rollback after
+manager failures or lost acknowledgments. `packaging/kde/test-person.py USER` is
+a root-only private-mount test of the installed backend/child managers with
+synthetic references; it never modifies production PAM/profiles or captures frames.
+CLI tests validate exact subject/action completion and sanitized health-report fields.

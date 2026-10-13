@@ -156,7 +156,7 @@ fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()>
                 4,
                 std::ptr::null_mut(),
                 c"%s".as_ptr(),
-                c"Linux Hello: spójrz prosto w kamerę. W razie braku dopasowania użyj hasła."
+                c"Linux Hello: look straight at the camera. If your face does not match, use your password."
                     .as_ptr(),
             )
         };

@@ -75,7 +75,7 @@ def main():
         protected(HELPER)
         protected('/usr/lib64/security/pam_linuxhello.so')
         protected(ROOT / str(args.uid) / 'config.json', True)
-        print('Patrz prosto w kamere: sprawdzam wzorzec przed aktywacja sudo.', flush=True)
+        print('Look straight at the camera: checking the reference before enabling sudo.', flush=True)
         subprocess.run([HELPER, 'diagnose', str(args.uid)], check=True, timeout=40, env={'LANG':'C.UTF-8'})
     updated = changed(text, args.action == 'enable').encode()
     if updated == original:

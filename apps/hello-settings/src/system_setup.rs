@@ -22,9 +22,9 @@ pub fn configure(
 ) -> Result<String, String> {
     let source = source
         .to_str()
-        .ok_or("Ścieżka zapisu nie jest poprawnym tekstem.")?;
+        .ok_or("The reference path is not valid text.")?;
     if !(12..=1024).contains(&password.len()) {
-        return Err("Nieprawidłowa długość hasła zapisu.".into());
+        return Err("Invalid reference passphrase length.".into());
     }
     let metadata = serde_json::json!({"source":source,"sudo":choices[0],"login":choices[1],"unlock":choices[2]});
     let mut child = Command::new("/usr/bin/pkexec")
@@ -33,11 +33,11 @@ pub fn configure(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|_| "Nie można otworzyć systemowego okna administratora.".to_string())?;
+        .map_err(|_| "Cannot open the system authorization dialog.".to_string())?;
     let mut input = child
         .stdin
         .take()
-        .ok_or("Brak prywatnego kanału konfiguracji.")?;
+        .ok_or("Private setup channel unavailable.")?;
     let write_result = (|| -> std::io::Result<()> {
         serde_json::to_writer(&mut input, &metadata)?;
         input.write_all(b"\n")?;
@@ -49,12 +49,12 @@ pub fn configure(
     if write_result.is_err() {
         let _ = child.kill();
         let _ = child.wait();
-        return Err("Autoryzacja została anulowana lub konfigurator jest niedostępny.".into());
+        return Err("Authorization was cancelled or the setup helper is unavailable.".into());
     }
     let output = child
         .stdout
         .take()
-        .ok_or("Brak odpowiedzi konfiguratora.")?;
+        .ok_or("No response from the setup helper.")?;
     let reader = thread::spawn(move || {
         let mut reader = BufReader::new(output);
         let mut configured = false;
@@ -102,14 +102,12 @@ pub fn configure(
         }
         thread::sleep(Duration::from_millis(100));
     };
-    let (configured, message) = reader
-        .join()
-        .map_err(|_| "Nie można odczytać wyniku konfiguracji.")?;
+    let (configured, message) = reader.join().map_err(|_| "Cannot read the setup result.")?;
     if status.is_some_and(|s| s.success()) && configured {
-        Ok("Twarz zapisana i skonfigurowana dla wybranych funkcji.".into())
+        Ok("Face saved and configured for the selected uses.".into())
     } else {
         Err(if message.is_empty() {
-            "Konfiguracja nie została zatwierdzona. Poprzednie logowanie i hasło pozostają dostępne.".into()
+            "Setup was not approved. Previous authentication and password fallback remain available.".into()
         } else {
             message
         })

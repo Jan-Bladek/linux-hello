@@ -17,12 +17,54 @@ Current usage and activation are in [scope](index.md), [inference](inference.md)
 [sudo](sudo-integration.md) and [KDE](kde-login.md). This document preserves evidence;
 it is not the installation guide.
 
+## English UI and self-account management — 2026-10-13
+
+Reviewed official Howdy, Gaze and dax-auth workflows; the dated
+[comparison](project-comparison.md) records adopted management/health features
+without inferring their accuracy or attack resistance. Added authorized self-only
+status, pause and confirmed system-reference removal in GUI/CLI, plus an
+unprivileged sanitized installation health report. GUI, recognition/PAM/setup
+messages, installer, desktop entries and current documentation now use English.
+User labels and stored biometric records are not translated. Earlier UI labels
+in this document are rendered in English for readability; their original milestones
+could predate the language change. [Contributors](../CONTRIBUTORS.md) credits
+OpenAI Codex explicitly as AI assistance, not a separate GitHub user.
+
+Default workspace tests/Clippy and optional GUI/CLI/PAM/helper tests/Clippy passed.
+The optional CLI library has 72 passing tests (1 restricted-child entry ignored
+in the ordinary runner), GUI 11, PAM 8 and sudo helper 3 (1 real-TPM entry ignored).
+The Python suite has 41 passing tests including 4 account-management regressions.
+All 28 Markdown files passed link/heading checks; formatting, shell/Python syntax,
+desktop-file validation and diff checks passed. English software-renderer snapshots
+cover every tab and enrollment state at desktop/minimum sizes; the public screenshot
+contains UI only.
+
+Installed full binaries/helpers through the existing atomic source installer.
+Explicitly executed real management/child-manager status/pause/remove in a private
+mount namespace with synthetic references and an additional opted-in account.
+Verified other-account markers and shared PAM bytes unchanged, rejection of a
+root/system authorization subject, and exclusion of synthetic secret data from
+responses. Ordinary regressions additionally verify partial-failure and lost-ack
+rollback. This is management coverage, not a live biometric acceptance test.
+The installed actual owner's authorized status reports enrolled, all three uses enabled and
+TPM backend; `tpm-status` validates the current key/template. Password fallback,
+SELinux Enforcing and existing recognition controls remain in place. A six-second Wayland launch of the installed English GUI completed without errors
+(terminated by timeout). Private-namespace PAM dispatch tests also passed for
+match/rejection and auth/account/setcred, with simulated helper exits only. Doctor JSON
+has 13 checks and explicitly excludes capture, biometric data and authentication
+verdicts. CLI removal without confirmation is rejected before authorization.
+
+New account operations have not been exercised through a human-operated Polkit
+GUI dialog or a new live face login in this session. Missing consented biometric
+benchmarks, reviewed PAD evidence and broader deployment qualification remain open.
+
 ## Complete Fedora source installer — 2026-10-13
 
 Added `install.sh` and unprivileged build/staging plus fixed-path administrator
 installation. It builds full GUI/CLI recognition, sudo and KDE PAM, pinned models,
 probe and policy; it never activates PAM/accounts or starts the diagnostic daemon.
-The recommended entry point and first-run steps are documented in Polish.
+The recommended entry point and first-run guide were initially written in Polish;
+the current guide is English.
 
 Executed on the existing Fedora 44 KDE host: dry-run; full offline/skip-deps
 build-only with TPM policy; 22 GUI/helper/PAM tests passed (real-TPM test ignored
@@ -731,12 +773,12 @@ work/inference/manual-trials-*. Live manually labelled trials remain for the use
 ## Named person and guided UI — 2026-10-11
 
 User requested a friendlier adding/recognition flow and person names. Added
-Polish Osoba tab with name field, eight-step progress and pose guidance, explicit
+Face tab (originally Polish) with name field, eight-step progress and pose guidance, explicit
 next-sample/cancel controls, a separate recognition result card and rename.
 Camera preview temporarily replaces the person cards; technical single-frame
 checks/model controls moved under Ustawienia. New set preserves the previous
 reference until completion and restores it on cancellation. Positive recognition
-shows Rozpoznano: [name]; nonmatching/ambiguous/error states do not name a match.
+shows Recognized: [name]; nonmatching/ambiguous/error states do not name a match.
 
 Template adds optional bounded display_name inside the existing authenticated
 encrypted payload. No plaintext name sidecar/filename. Explicit Save persists
@@ -759,13 +801,13 @@ snapshots: work/inference/named-person-*. No live user acquisition performed.
 
 ## Scanner → name → recognition UI — 2026-10-11
 
-User requested a visual scan, label and rescan/identify flow. Osoba now contains
+User requested a visual scan, label and rescan/identify flow. Face now contains
 a dark scanner panel, positioning oval, animated scan line, explicit 1/2/3 stages,
 accepted-sample progress and named results. Panel scales at minimum window height.
 One explicit scan starts/resumes eight bounded sample captures, with cancellable
 1.5-second pose pauses; a rejection/error stops and retains accepted samples.
 An anonymous completed template prompts for a name before GUI recognition.
-Signing enables Skanuj i rozpoznaj for the existing three-probe comparison.
+Signing enables Scan and recognize for the existing three-probe comparison.
 
 Optional parent FrameObserver displays actual acquired frames. One pending update
 plus per-job alive/cancel checks bounds the UI queue and suppresses late frames.
@@ -1238,8 +1280,8 @@ activation trace, latency measurements or camera samples were supplied.
 
 ## Unified setup and user-focused GUI — 2026-10-13
 
-Implemented scan/name → three use cards → **Zapisz i skonfiguruj**. Ordinary mode
-uses Polish guidance; models, thresholds, motion tests and metadata are behind
+Implemented scan/name → three use cards → **Save and set up**. Ordinary mode
+originally used Polish guidance; models, thresholds, motion tests and metadata are behind
 the developer switch. Startup enumerates devices without capture, prefers an IR
 candidate and uses installed pinned models when present. No root GUI or automatic
 startup enrollment was introduced. A desktop menu entry was created on the host.

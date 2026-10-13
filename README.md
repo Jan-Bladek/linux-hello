@@ -22,6 +22,8 @@ repository. No cloud processing or runtime model download is required.
 | sudo | Protected root-owned reference, UID-bound verifier, original password fallback | Separate experimental opt-in |
 | KDE login | Plasma Login Manager/SDDM PAM integration with independent account/service opt-in | Owner confirmed real Plasma login; SDDM is implemented but not physically validated here |
 | KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE; other lockers are not integrated |
+| Account management | Authorized self-account status, pause and confirmed reference removal in GUI/CLI | Metadata status does not perform live verification |
+| Installation health | Metadata-only GUI/CLI report with pinned model checks | Not an authentication or PAD result |
 | Diagnostic daemon | Read-only D-Bus status and bus-derived requester UID | No enrollment or authentication authority |
 | Fingerprints | fprintd discovery and enrolled-finger status | Enrollment/removal UI is not implemented |
 | Packaging | Full Fedora source installer, diagnostic RPM specification and manual PAM alternatives | RPM lifecycle and broad desktop/security qualification remain release gates |
@@ -42,7 +44,7 @@ Recommended full installation (run as your desktop user, without sudo):
 The installer handles Fedora dependencies, pinned Rust, tests, full compilation,
 verified model downloads, fixed-path helpers and the desktop launcher. Activate
 selected uses through the GUI after installation. See the
-[complete Polish installation guide](docs/install-fedora.md) for first-time setup,
+[complete installation guide](docs/install-fedora.md) for first-time setup,
 offline/build-only options, TPM, update and recovery.
 
 ## Build and run
@@ -77,21 +79,21 @@ worker limits are in [inference](docs/inference.md).
 
 ## Scan, name and recognize
 
-1. In **Osoba**, select the camera and, on supported hardware, IR illumination.
+1. In **Face**, select the camera and, on supported hardware, IR illumination.
    Close preview before enrollment or verification.
-2. Choose **Skanuj nową twarz**. Capture eight valid samples following the position
+2. Choose **Scan a new face**. Capture eight valid samples following the position
    instructions. Three frontal anchors come before moderate pose variation.
-3. Enter a name and choose **Podpisz twarz**. The name is a local label.
-4. Choose **Skanuj i rozpoznaj** and look straight at the camera. Three suitable
+3. Enter a name and choose **Name this face**. The name is a local label.
+4. Choose **Scan and recognize** and look straight at the camera. Three suitable
    matching frames are required; normal verification does not require head turns.
-5. After naming, Settings opens with three cards: **Sudo**, **Logowanie KDE**
-   and **Odblokowanie**. Choose the uses, enter a separate reference passphrase
-   twice and select **Zapisz i skonfiguruj**. A system Polkit prompt authorizes
+5. After naming, Settings opens with three cards: **Sudo**, **KDE sign-in**
+   and **Screen unlock**. Choose the uses, enter a separate reference passphrase
+   twice and select **Save and set up**. A system Polkit prompt authorizes
    protected import and the selected live PAM checks in one guided operation.
    Keep facing the camera until completion; loading after restart remains explicit.
 
-**Stop** cancels capture and awaits cleanup. **Kontynuuj skan** resumes accepted
-samples; **Anuluj dodawanie** preserves the previous reference. A scan alone does not change the system reference. **Zapisz i skonfiguruj**
+**Stop** cancels capture and awaits cleanup. **Resume scan** resumes accepted
+samples; **Cancel enrollment** preserves the previous reference. A scan alone does not change the system reference. **Save and set up**
 updates the protected reference and selected services after administrator
 authorization; ordinary failures restore the previous system state. Complete existing
 V1/V2 references remain supported; re-enroll to obtain V2 pose-aware scoring or
@@ -101,18 +103,38 @@ and [inference](docs/inference.md).
 ## System setup from the GUI
 
 Install the optional root helpers as described below first. The GUI starts on
-**Osoba**, discovers cameras without capture and prefers an IR candidate. Installed
+**Face**, discovers cameras without capture and prefers an IR candidate. Installed
 models are selected automatically when present. After scanning and naming, choose
-the three application cards and use **Zapisz i skonfiguruj**. You do not need to run
+the three application cards and use **Save and set up**. You do not need to run
 three activation scripts manually. All existing face/PAM checks still execute;
 partial checks never count as successful setup. No raw embeddings or account
 passwords are sent by the GUI. The reference passphrase crosses a bounded private
 pipe, not argv, environment or a file.
 
 Unchecking a use disables it for this account after saving the configuration.
-A per-account sudo disable preserves other enrolled users. **Tryb deweloperski**
+A per-account sudo disable preserves other enrolled users. **Developer mode**
 in Settings reveals models, threshold tests, metadata, motion diagnostics and the
-local-only save. Default user mode shows ordinary Polish instructions.
+local-only save. Default user mode uses English instructions. User labels may use any supported Unicode name.
+
+## Account management and health
+
+Overview shows your local face and provides an authorized **Check system status**.
+Settings includes **Pause face authentication** and confirmed **Remove system
+reference** for your own account. Pausing retains the reference; removal deletes
+its system template/key while keeping password fallback and the local GUI file.
+Other accounts stay enabled. Resume through the normal live-checked GUI setup.
+
+```sh
+hello account status
+hello account pause
+hello account remove --confirm
+hello doctor
+hello doctor --json
+```
+
+The doctor starts no camera stream and includes no biometric data. Full details:
+[account controls](docs/account-management.md) and the
+[related-project comparison](docs/project-comparison.md).
 
 ## Manual system authentication setup
 
@@ -174,3 +196,8 @@ Shared crates are Apache-2.0 ([LICENSE](LICENSE)); the Slint GUI is GPL-3.0-only
 ([LICENSE-GPL-3.0](LICENSE-GPL-3.0)). GUI distribution requires corresponding source
 and notices. Code licensing does not establish pretrained weight/data rights;
 no weights are distributed. Windows Hello-equivalent security is not claimed.
+
+## Contributors
+
+Maintained by [Jan-Bladek](https://github.com/Jan-Bladek), with AI-assisted development
+by **OpenAI Codex**. See [contributors and attribution](CONTRIBUTORS.md).

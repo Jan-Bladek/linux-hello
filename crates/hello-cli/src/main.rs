@@ -23,6 +23,21 @@ struct Arguments {
 enum Command {
     /// Enumerate V4L2 devices, pixel formats, sizes, and IR hints without capture.
     Cameras,
+    /// Inspect installation health without capturing frames or accessing biometrics.
+    Doctor {
+        /// Emit a sanitized JSON report suitable for a support issue.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Authorized status, pause or removal for your own system face reference.
+    #[cfg(target_os = "linux")]
+    Account {
+        #[arg(value_parser = ["status", "pause", "remove"])]
+        action: String,
+        /// Required before deleting the protected system reference.
+        #[arg(long)]
+        confirm: bool,
+    },
     /// Capture a bounded set of frames; report metadata only, never save pixels.
     Capture {
         #[arg(long)]
@@ -239,6 +254,25 @@ async fn capture(
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     match Arguments::parse().command {
+        Command::Doctor { json } => {
+            let report = tokio::task::spawn_blocking(hello_cli::health::inspect).await?;
+            if json {
+                output(&report)
+            } else {
+                print!("{}", report.text());
+                Ok(())
+            }
+        }
+        #[cfg(target_os = "linux")]
+        Command::Account { action, confirm } => {
+            if action == "remove" && !confirm {
+                return Err("Removal deletes your protected system reference. Use --confirm after reviewing this; password fallback and local GUI data remain available.".into());
+            }
+            let result = tokio::task::spawn_blocking(move || hello_cli::account::manage(&action))
+                .await?
+                .map_err(std::io::Error::other)?;
+            output(&result)
+        }
         Command::CameraControls { device } => {
             output(&tokio::task::spawn_blocking(move || hello_camera::controls(&device)).await??)
         }

@@ -39,8 +39,7 @@ and [KDE](kde-login.md) for exact commands, permissions and rollback.
 
 ## Unified GUI configuration
 
-After scan/name, the user chooses sudo, KDE login and unlock. Explicit **Zapisz i
-skonfiguruj** saves the GUI reference and launches the fixed installed setup
+After scan/name, the user chooses sudo, KDE login and unlock. Explicit **Save and set up** saves the GUI reference and launches the fixed installed setup
 helper via pkexec. A bounded private stdin pipe carries choices/source directory
 and the reference passphrase, not the account password or biometric vectors.
 The helper derives the subject UID from pkexec, authorizes no alternate target,

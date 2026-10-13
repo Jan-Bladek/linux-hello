@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ $EUID -ne 0 ]] || { echo 'Run as the normal desktop account.'; exit 1; }
 login_user=$(id -un)
-printf '%s\n' 'Linux Hello: aktywacja logowania KDE dla Twojego konta.' 'Zamknij podglad kamery w GUI. Usiadz jak podczas zapisywania wzorca i patrz prosto.' 'Wykorzystam istniejacy wzorzec sudo; nowe skanowanie/zapisywanie twarzy nie jest potrzebne.' 'Aktywacja wymaga dwoch poprawnych prob z Twoja twarza. W razie odrzucenia PAM pozostaje bez zmian.' 'To eksperymentalna biometria bez zwalidowanej ochrony przed zdjeciem/nagraniem.'
-printf '%s\n' 'Najpierw autoryzacja sudo (twarz lub haslo). Potem dwa oddzielne testy logowania z odliczaniem.' 'Podczas skanowania nie naciskaj Enter; czekaj na wynik.'
+printf '%s\n' 'Linux Hello: KDE sign-in activation for your account.' 'Close camera preview. Sit as you did during enrollment and look straight ahead.' 'The existing sudo reference will be used; new face enrollment is not needed.' 'Activation requires two successful face checks. If rejected, PAM remains unchanged.' 'Experimental biometrics without validated photo/video attack protection.'
+printf '%s\n' 'Sudo authorization first (face or password), then two separate sign-in checks with a countdown.' 'Do not press Enter during scanning; wait for the result.'
 sudo -- /usr/local/libexec/linux-hello-sudo/manage-kde.py enable --user "$login_user"
-printf '%s\n' 'Gotowe. Przy nastepnym logowaniu wybierz konto i nacisnij Enter z pustym polem hasla, patrzac w kamere.' 'Haslo nadal dziala. KWallet moze poprosic osobno o swoje haslo.'
+printf '%s\n' 'Ready. At your next sign-in, select the account and submit the empty password field while facing the camera.' 'Password fallback remains available. KWallet may request its own password.'

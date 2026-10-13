@@ -167,7 +167,7 @@ fn passphrase(cancel: &AtomicBool) -> Result<Zeroizing<Vec<u8>>, Error> {
         fd: tty.as_raw_fd(),
         original,
     };
-    tty.write_all(b"Haslo zapisanej osoby z GUI (nie haslo sudo): ")?;
+    tty.write_all(b"GUI reference passphrase (not your sudo password): ")?;
     let mut password = Zeroizing::new(Vec::new());
     loop {
         if cancel.load(Ordering::Acquire) {
@@ -218,7 +218,7 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
     let default_source = home.join(".local/share/linux-hello/diagnostic-reference");
     let source = source.unwrap_or(&default_source);
     eprintln!(
-        "Importuje istniejacy wzorzec konta {name}. Pozniejsze zmiany w GUI nie zmienia wzorca sudo."
+        "Importing the existing reference for account {name}. Local-only GUI edits do not update the protected system copy."
     );
     let template = hello_storage::SecureStore::import_passphrase(source, uid, password)?;
     if !template.strict_available() || template.dimensions() != 128 || template.sample_count() != 8
@@ -292,7 +292,9 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
     file.sync_all()?;
     fs::rename(&pending, dir.join("config.json"))?;
     std::fs::File::open(&dir)?.sync_all()?;
-    eprintln!("Wzorzec sudo zapisany. Patrz prosto w kamere — sprawdzam przed wlaczeniem PAM.");
+    eprintln!(
+        "Sudo reference saved. Look straight at the camera for verification before PAM activation."
+    );
     Ok(uid)
 }
 fn framed_password(mut input: impl Read) -> Result<Zeroizing<Vec<u8>>, Error> {

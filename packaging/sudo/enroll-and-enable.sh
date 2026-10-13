@@ -4,11 +4,11 @@ set -euo pipefail
 user=$(id -un)
 uid=$(id -u)
 base=/usr/local/libexec/linux-hello-sudo
-printf '%s\n' 'Linux Hello: konfiguracja sudo dla Twojego konta.' 'Zamknij podglad kamery w GUI. Wpisz haslo sudo, potem haslo zapisanej osoby z GUI.' 'Po imporcie patrz prosto w kamere; sprawdzanie nie wymaga skretow glowy.' 'To eksperymentalne rozpoznawanie bez zwalidowanej ochrony przed zdjeciem/nagraniem.'
+printf '%s\n' 'Linux Hello: sudo setup for your account.' 'Close camera preview. Enter your account password, followed by the GUI reference passphrase.' 'After import, look straight at the camera; verification does not require head turns.' 'Experimental recognition without validated photo/video attack protection.'
 sudo -k
 sudo -- "$base/hello-sudo" enroll "$user"
 sudo -- "$base/manage.py" enable --uid "$uid"
-printf '%s\n' 'Wlaczone. Test sudo: patrz w kamere. Przy braku dopasowania podaj zwykle haslo.'
+printf '%s\n' 'Enabled. Sudo test: face the camera. Enter your password if recognition fails.'
 sudo -k
 sudo -- /usr/bin/id -u
-printf '%s\n' 'Gotowe. Wylaczenie: sudo /usr/local/libexec/linux-hello-sudo/manage.py disable'
+printf '%s\n' 'Ready. Global sudo disable: sudo /usr/local/libexec/linux-hello-sudo/manage.py disable'

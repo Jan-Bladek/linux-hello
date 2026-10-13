@@ -391,7 +391,7 @@ until reset/window close; no camera image, embedding or trial history is saved.
 
 ### Named person and guided GUI — 2026-10-11
 
-The primary tab is now Osoba: camera/IR selection, a name field, guided eight-step
+The primary tab is now Face: camera/IR selection, a name field, guided eight-step
 acquisition with accepted-sample progress and localized pose instructions, and a
 separate recognition card. Start adds the first sample; subsequent captures still
 require an explicit click. The head-position prompts remain guidance, not measured
@@ -399,10 +399,10 @@ pose or PAD. Hardware/model selection is disabled during a new enrollment.
 Technical model controls and single-frame comparison tools moved to Ustawienia.
 
 Starting a named set preserves the previous reference until all eight accepted
-samples finish. Stop preserves pending progress; Anuluj dodawanie drops the new
+samples finish. Stop preserves pending progress; Cancel enrollment drops the new
 set and restores the old reference. Rename requires no pending set and changes
 only the local display label. Name changes advance reference generation, so old
-manual trial sets require reset. Positive recognition shows Rozpoznano: [name];
+manual trial sets require reset. Positive recognition shows Recognized: [name];
 negative/inconclusive/error states do not identify the target as the observed face.
 
 Template format v1 has an optional display_name field, validated on deserialize
@@ -410,7 +410,7 @@ and assignment: trim outer spaces, 1–64 Unicode characters, maximum 256 UTF-8
 bytes, no controls or bidi formatting controls. It is encrypted/authenticated
 in template.lht with the biometric centroid, not placed in a sidecar or filename.
 Saving after rename is explicit. Old unnamed templates remain readable with
-Zapisana osoba as a UI fallback and can be named without recapture; old three-sample
+Saved person as a UI fallback and can be named without recapture; old three-sample
 references still require eight samples before recognition. Older binaries that
 deny unknown template fields may reject a newly named file.
 
@@ -423,7 +423,7 @@ worker isolation, storage encryption or authentication-readiness gates changed.
 
 ### Scanner-first GUI — 2026-10-11
 
-The Osoba workflow now follows scan → label → rescan/recognize. A user click
+The Face workflow now follows scan → label → rescan/recognize. A user click
 starts/resumes a bounded eight-probe enrollment; a cancellable 1.5-second pause
 between probes presents the next pose instruction. A quality/worker failure or
 Stop ends the run retaining accepted probes, without replacing the old reference.
@@ -674,7 +674,7 @@ cold benchmark remains available. No calibration is installed into PAM/GUI.
 
 ## Normal recognition without mandatory turns — 2026-10-12
 
-The default Osoba → Skanuj i rozpoznaj and both labelled verification trials now
+The default Face → Scan and recognize and both labelled verification trials now
 use verify_person_observed: one reference, three fresh distinct quality-accepted
 frames, minimum owner similarity across all three, unchanged centroid/exemplar/
 shape gates and floor0.80. No yaw calibration, randomized turn, nose displacement
@@ -692,7 +692,7 @@ remainfalse. Final progress rechecks cancellation/reference and queued UI progre
 cannot overwrite a finished result. A partial1/2 frame set cannot be recognized.
 
 The existing measured-motion implementation remains available through a separate
-Settings → Diagnostyka kamery i modeli → Test ruchu głowy (diagnostyka) button.
+Settings → Camera and model diagnostics → Head movement test (diagnostics) button.
 This supersedes earlier documentation requiring turns for ordinary recognition.
 Enrollment and templates did not change; no additional re-enrollment is required
 for this workflow change. Previously stored complete V1/V2 references still work.

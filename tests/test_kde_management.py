@@ -29,7 +29,7 @@ class KdeManagement(unittest.TestCase):
             with self.assertRaises(m.ActivationError): m.run_probe([],1)
         self.assertIn('0.713',log.getvalue())
         self.assertIn('0.800',log.getvalue())
-        self.assertIn('sredniego wzorca',log.getvalue())
+        self.assertIn('centroid similarity',log.getvalue())
         self.assertIn('PAM_AUTHENTICATE=7',log.getvalue())
 
     def test_probe_timeout_fails_closed_and_success_keeps_all_pam_checks(self):
