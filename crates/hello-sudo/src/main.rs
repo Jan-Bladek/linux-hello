@@ -200,17 +200,23 @@ fn passphrase(cancel: &AtomicBool) -> Result<Zeroizing<Vec<u8>>, Error> {
     Ok(password)
 }
 fn enroll(name: &str, cancel: &AtomicBool) -> Result<u32, Error> {
+    if boundary::account(name)?.0 < 1000 {
+        return Err("System/root accounts cannot be enrolled".into());
+    }
+    let password = passphrase(cancel)?;
+    import_reference(name, None, &password)
+}
+fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Result<u32, Error> {
     let (uid, _, home) = boundary::account(name)?;
     if uid < 1000 {
         return Err("System/root accounts cannot be enrolled".into());
     }
-    let source = home.join(".local/share/linux-hello/diagnostic-reference");
+    let default_source = home.join(".local/share/linux-hello/diagnostic-reference");
+    let source = source.unwrap_or(&default_source);
     eprintln!(
         "Importuje istniejacy wzorzec konta {name}. Pozniejsze zmiany w GUI nie zmienia wzorca sudo."
     );
-    let password = passphrase(cancel)?;
-    let template = hello_storage::SecureStore::import_passphrase(&source, uid, &password)?;
-    drop(password);
+    let template = hello_storage::SecureStore::import_passphrase(source, uid, password)?;
     if !template.strict_available() || template.dimensions() != 128 || template.sample_count() != 8
     {
         return Err("Incomplete or incompatible reference".into());
@@ -235,6 +241,12 @@ fn enroll(name: &str, cancel: &AtomicBool) -> Result<u32, Error> {
         fs::create_dir(&dir)?;
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
     }
+    // Updating a face must never relax an administrator's existing threshold.
+    let threshold = match protected_file(&dir.join("config.json"), true, 16384) {
+        Ok(file) => previous_threshold(file, uid)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0.80,
+        Err(error) => return Err(error.into()),
+    };
     protected_path(&dir.join("key"))?;
     let keypath = dir.join("key");
     if !keypath.exists() {
@@ -256,7 +268,7 @@ fn enroll(name: &str, cancel: &AtomicBool) -> Result<u32, Error> {
         uid,
         device: device.path.clone(),
         identity: device.identity.clone(),
-        threshold: 0.80,
+        threshold,
         experimental_without_validated_pad: true,
     };
     config.validate(uid)?;
@@ -273,6 +285,29 @@ fn enroll(name: &str, cancel: &AtomicBool) -> Result<u32, Error> {
     std::fs::File::open(&dir)?.sync_all()?;
     eprintln!("Wzorzec sudo zapisany. Patrz prosto w kamere — sprawdzam przed wlaczeniem PAM.");
     Ok(uid)
+}
+fn framed_password(mut input: impl Read) -> Result<Zeroizing<Vec<u8>>, Error> {
+    let mut header = [0; 2];
+    input.read_exact(&mut header)?;
+    let length = usize::from(u16::from_be_bytes(header));
+    if !(12..=1024).contains(&length) {
+        return Err("Invalid passphrase length".into());
+    }
+    let mut password = Zeroizing::new(vec![0; length]);
+    input.read_exact(&mut password)?;
+    if std::str::from_utf8(&password)?.chars().count() < 12 {
+        return Err("Passphrase requires twelve characters".into());
+    }
+    let mut extra = [0];
+    if input.read(&mut extra)? != 0 {
+        return Err("Unexpected passphrase input".into());
+    }
+    Ok(password)
+}
+fn previous_threshold(input: impl Read, uid: u32) -> Result<f32, Error> {
+    let previous: Config = serde_json::from_reader(input)?;
+    previous.validate(uid)?;
+    Ok(previous.threshold)
 }
 #[tokio::main]
 async fn main() {
@@ -328,6 +363,15 @@ async fn run() -> Result<(), Error> {
             let uid = enroll(name, &cancel)?;
             verify(uid, cancel, true).await
         }
+        [command, name, source] if command == "enroll-stdin" => {
+            // Root-authorized GUI setup only. Secret arrives on a bounded private
+            // pipe, never argv/environment/file. Source import still enforces UID
+            // ownership, private files, no symlinks and encrypted account binding.
+            let password = framed_password(std::io::stdin().lock())?;
+            let uid = import_reference(name, Some(Path::new(source)), &password)?;
+            drop(password);
+            verify(uid, cancel, false).await
+        }
         [command, uid] if command == "diagnose" => verify(uid.parse()?, cancel, true).await,
         _ => Err("Usage: hello-sudo enroll USER | verify UID | diagnose UID".into()),
     };
@@ -337,6 +381,16 @@ async fn run() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn private_import_pipe_rejects_oversize_truncation_and_extra_input() {
+        let mut frame = 12_u16.to_be_bytes().to_vec();
+        frame.extend_from_slice(b"test-phrase!");
+        assert!(framed_password(frame.as_slice()).is_ok());
+        frame.push(0);
+        assert!(framed_password(frame.as_slice()).is_err());
+        assert!(framed_password(&frame[..5]).is_err());
+        assert!(framed_password(&1025_u16.to_be_bytes()[..]).is_err());
+    }
     #[test]
     fn refuses_missing_corrupt_or_cross_user_configuration() {
         assert!(load(u32::MAX).is_err());
@@ -349,6 +403,11 @@ mod tests {
             experimental_without_validated_pad: true,
         };
         assert!(c.validate(1000).is_ok());
+        c.threshold = 0.93;
+        let bytes = serde_json::to_vec(&c).unwrap();
+        assert_eq!(previous_threshold(bytes.as_slice(), 1000).unwrap(), 0.93);
+        assert!(previous_threshold(bytes.as_slice(), 1001).is_err());
+        c.threshold = 0.80;
         assert!(c.validate(1001).is_err());
         for threshold in [f32::NAN, f32::INFINITY, 0.79, 1.01] {
             c.threshold = threshold;

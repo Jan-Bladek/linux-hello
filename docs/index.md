@@ -10,13 +10,13 @@ security-qualified biometric product.
 | --- | --- |
 | Default diagnostics | CLI/GUI camera checks and read-only D-Bus; no OS authentication authority |
 | GUI reference | One named local face template, optionally encrypted with a separate passphrase |
-| PAM reference | A separately imported, encrypted root-owned UID-bound template; GUI edits do not update it |
+| PAM reference | A separately imported, encrypted root-owned UID-bound template; local-only edits do not update it; authorized unified setup does |
 | Verification | Three fresh suitable frames compared only with the claimed account's reference; no normal head-turn challenge |
 | Enrollment | Eight accepted frames with quality/consistency checks; new scans produce V2 templates |
 | Experimental authentication | Explicit opt-in for sudo, KDE login or KDE unlock; errors fall through to the original password path |
 | Qualified security | Not achieved: representative NIR FAR/FRR, validated PAD, independent review and deployment qualification remain outstanding |
 
-| Integration | PAM services | Caller binding | Activation |
+| Integration | PAM services | Caller binding | Manual activation |
 | --- | --- | --- | --- |
 | sudo | `sudo`, `sudo-i` | Claimed UID matches caller; trusted PAM_RUSER when sudo's real UID is root | `enroll-and-enable.sh` |
 | KDE login | `plasmalogin`, `sddm` | Root display-manager helper and protected per-account/service opt-in | `activate-kde.sh` |
@@ -26,6 +26,10 @@ The current pipeline uses YuNet + SFace + OpenCV DNN, not SCRFD/ArcFace/ONNX
 Runtime. Five landmarks are not depth or validated anti-spoofing. The threshold
 floor 0.80 is provisional. Complete eight-sample V1/V2 templates are compatible;
 models from incompatible pipelines must not be mixed.
+
+The normal full-GUI path is scan → name → select uses → **Zapisz i skonfiguruj**
+with a separate reference passphrase and system authorization. The table lists
+the retained manual alternatives. Developer controls are hidden by default.
 
 ## Reading paths
 

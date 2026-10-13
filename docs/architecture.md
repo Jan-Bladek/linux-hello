@@ -19,7 +19,7 @@ authentication product release. Read the
 | `hello-pam` | Optional PAM adapter and self-only locker launcher | Explicit sudo/KDE feature, supported caller/service only; password fallback |
 | `hello-sudo` | Fixed root verifier and protected template import | Root-owned UID profiles; authenticates only after matching and cleanup |
 | `hello-cli` / `hello` | Diagnostics, local face tools and evaluation | Does not edit PAM; explicit root management scripts handle activation |
-| `hello-settings` | Slint preview, named enrollment and passive recognition | Ordinary desktop user; cannot update the protected PAM profile |
+| `hello-settings` | Slint preview, named enrollment and passive recognition | Ordinary desktop user; can request explicit authorized setup; cannot write root profiles directly |
 
 ```mermaid
 flowchart LR
@@ -87,6 +87,9 @@ Model license, preprocessing, sensor applicability, accuracy and adversarial
 evaluation must all be known. Runtime and model checksums must be tracked together.
 
 GUI enrollment and administrator-authorized import use the storage library.
+The fixed pkexec setup helper coordinates selected sudo/KDE managers, derives
+its own subject UID, serializes setup and restores prior files on ordinary failure.
+It is separate from the diagnostic daemon.
 The GUI key is passphrase-derived; PAM profiles use separate random root-owned
 keys and protected ancestry. No TPM lifecycle or general-purpose privileged
 management daemon is implemented. A diagnostic test key is not an auth credential.

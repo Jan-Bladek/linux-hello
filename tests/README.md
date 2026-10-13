@@ -119,3 +119,18 @@ The checker validates repository Markdown file/image links and heading fragments
 including archived milestones. It skips fenced examples and does not fetch
 external URLs. CI runs the same check. It cannot validate external source claims,
 biometric security or the truth of owner-declared results.
+
+## Unified person setup
+
+`tests/test_person_setup.py` checks exact boolean choices, bounded private secret
+framing, rollback of the old profile/PAM after partial failure or result-pipe
+disconnection, and own-account sudo disabling without changing other users.
+The GUI requires an exact completed-choice response and a successful root process
+exit before reporting completion. Helper tests cover truncated/oversized input
+and preserving existing higher thresholds. Rendering tests exercise ordinary
+user pages; developer controls remain behind an explicit switch.
+
+The privileged namespace regression also checks actual sudo PAM dispatch with
+missing, valid and broken per-account disable markers; another user's disable
+cannot affect this account. It remains a simulated verifier test, not a live
+biometric or complete Polkit GUI acceptance test.

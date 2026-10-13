@@ -28,14 +28,27 @@ The sudo enrollment helper requires administrator authorization and a normal NSS
 account UID. It reads the GUI reference passphrase through a masked terminal,
 checks private user-owned files and imports a complete compatible reference.
 It encrypts a separate copy with a random root-owned key under
-`/var/lib/linux-hello/sudo/<uid>`. The GUI reference is not altered. Each profile
-has UID-bound template/config/key files; unprivileged GUI edits cannot change them.
+`/var/lib/linux-hello/sudo/<uid>`. The manual import leaves the GUI reference unchanged. Each profile
+has UID-bound template/config/key files; unprivileged local-only GUI edits cannot change them.
 
 A live verification confirms the import. sudo activation requires another match,
 backs up the original service file and preserves the original password stack.
 KDE login and unlock have independent `pam-SERVICE.enabled` markers and two live
 pre-activation tests; they reuse the protected reference. See [sudo](sudo-integration.md)
 and [KDE](kde-login.md) for exact commands, permissions and rollback.
+
+## Unified GUI configuration
+
+After scan/name, the user chooses sudo, KDE login and unlock. Explicit **Zapisz i
+skonfiguruj** saves the GUI reference and launches the fixed installed setup
+helper via pkexec. A bounded private stdin pipe carries choices/source directory
+and the reference passphrase, not the account password or biometric vectors.
+The helper derives the subject UID from pkexec, authorizes no alternate target,
+imports and live-verifies the protected reference, then runs selected managers.
+It preserves the existing root threshold and restores prior root profile/PAM files
+on ordinary failure or result-pipe disconnection. A separate per-user sudo disable
+does not alter other users' authorization. No broad Polkit/D-Bus management API
+was added. Hard kill/power loss may require recovery.
 
 ## Verification transaction
 

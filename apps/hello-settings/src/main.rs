@@ -17,10 +17,19 @@ mod generated_ui {
     slint::include_modules!();
 }
 use generated_ui::SettingsWindow;
+#[cfg(all(feature = "face-diagnostics", target_os = "linux"))]
+mod system_setup;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Runtime::new()?;
     let window = SettingsWindow::new()?;
+    if let Ok(output) = std::process::Command::new("/usr/bin/id")
+        .arg("-un")
+        .output()
+        && output.status.success()
+    {
+        window.set_account_name(String::from_utf8_lossy(&output.stdout).trim().into());
+    }
     let devices: Arc<Mutex<Vec<DeviceInfo>>> = Arc::default();
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -44,14 +53,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let fingerprints = hello_fingerprint::readers().await;
             let (found, camera_message, camera_json) = match camera {
                 Ok(Ok(found)) => {
-                    let message = if found.is_empty() { "No accessible V4L2 devices found".into() } else { format!("{} V4L2 device(s) found. Camera is off.", found.len()) };
+                    let message = if found.is_empty() { "Nie znaleziono dostępnej kamery. Sprawdź połączenie i uprawnienia sesji.".into() } else { format!("Dostępne kamery: {}. Kamera włącza się dopiero po rozpoczęciu skanu lub podglądu.", found.len()) };
                     let json = serde_json::to_string_pretty(&found).unwrap_or_else(|_| "Device encoding failed".into());
                     (found, message, json)
                 }
                 Ok(Err(error)) => (Vec::new(), error.to_string(), "Camera diagnostics unavailable".into()),
                 Err(_) => (Vec::new(), "Camera worker failed".into(), "Camera diagnostics unavailable".into()),
             };
-            let labels: Vec<String> = found.iter().map(|d| format!("{} · {}", d.path.display(), d.name)).collect();
+            let labels: Vec<String> = found.iter().map(|d| format!("{} · {}", if d.ir_hint != hello_camera::IrHint::Unknown { "Kamera IR" } else { "Kamera" }, d.name)).collect();
+            let selected = found.iter().position(|d| d.capture_supported && d.ir_hint != hello_camera::IrHint::Unknown).unwrap_or(0) as i32;
+            let ir_preferred = found.get(selected as usize).is_some_and(|d| d.ir_hint != hello_camera::IrHint::Unknown);
             if let Ok(mut state) = state.lock() { *state = found; }
             let daemon_message = match daemon {
                 Ok(status) => format!("Connected to {} · diagnostics only{}", status.capabilities.service_version, if session { " (session bus)" } else { "" }),
@@ -61,10 +72,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(readers) => serde_json::to_string_pretty(&readers).unwrap_or_else(|_| "Encoding failed".into()),
                 Err(error) => error.to_string(),
             };
-            let diagnostics = format!("Linux Hello {}\n\nDAEMON\n{}\n\nCAMERAS\n{}\n\nFPRINTD\n{}\n\nFace authentication and PAM are unavailable.", env!("CARGO_PKG_VERSION"), daemon_message, camera_json, fingerprint_json);
+            let diagnostics = format!("Linux Hello {}\n\nDAEMON\n{}\n\nCAMERAS\n{}\n\nFPRINTD\n{}\n\nD-Bus is diagnostic. System authentication is configured separately with administrator authorization.", env!("CARGO_PKG_VERSION"), daemon_message, camera_json, fingerprint_json);
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 ui.set_devices(ModelRc::from(Rc::new(VecModel::from(labels.into_iter().map(SharedString::from).collect::<Vec<_>>()))));
-                ui.set_selected_device(0);
+                ui.set_selected_device(selected);
+                // Selecting IR is only a preference. The scoped lease still
+                // validates exact hardware/firmware before any control write.
+                ui.set_use_ir_emitter(ir_preferred);
                 ui.set_camera_message(camera_message.into());
                 ui.set_daemon_message(daemon_message.into());
                 ui.set_diagnostics(diagnostics.into());
@@ -107,16 +121,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ir_emitter = ui.get_use_ir_emitter();
         stop.store(false, Ordering::Release);
         ui.set_preview_running(true);
-        ui.set_preview_message("Opening camera…".into());
+        ui.set_preview_message("Włączam kamerę…".into());
         let weak = weak.clone();
         let stop = stop.clone();
         let job = handle.spawn(async move {
             let result = run_preview(config, weak.clone(), stop, ir_emitter).await;
             let message = match result {
                 Ok(()) if ir_emitter => {
-                    "Preview ended. Camera released; IR mode restored; no frames saved.".into()
+                    "Podgląd zakończony. Kamera i podczerwień wyłączone; obrazów nie zapisano."
+                        .into()
                 }
-                Ok(()) => "Preview ended. Camera released; no frames saved.".into(),
+                Ok(()) => "Podgląd zakończony. Kamera wyłączona; obrazów nie zapisano.".into(),
                 Err(error) => format!("Preview stopped: {error}"),
             };
             let _ = weak.upgrade_in_event_loop(move |ui| {
@@ -129,6 +144,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let stop = cancel.clone();
     window.on_stop_preview(move || stop.store(true, Ordering::Release));
+    // Discover devices on launch without opening the camera. Prefer the IR node
+    // during discovery; capture itself always needs an explicit action.
+    window.invoke_refresh();
     let result = window.run();
     cancel.store(true, Ordering::Release);
     // Await camera stop, emitter restoration and worker reaping before runtime teardown.
@@ -192,9 +210,18 @@ fn configure_face_check(
     );
     let models = std::env::var_os("LINUX_HELLO_MODELS")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| "work/inference/models".into());
+        .unwrap_or_else(|| {
+            let installed = std::path::PathBuf::from("/usr/local/libexec/linux-hello-sudo/models");
+            if installed.is_dir() {
+                installed
+            } else {
+                "work/inference/models".into()
+            }
+        });
     if let Ok(models) = models.canonicalize() {
         window.set_models_directory(models.to_string_lossy().as_ref().into());
+    } else {
+        window.set_face_check_message("Brakuje modeli rozpoznawania. Zainstaluj pełną wersję lub wybierz folder modeli w trybie deweloperskim.".into());
     }
     let reference = Arc::new(Mutex::new(
         hello_cli::diagnostics::SessionReference::default(),
@@ -758,8 +785,14 @@ fn configure_person_actions(
                 sync_person_ui(&ui, &reference);
                 ui.set_recognition_state(0);
                 ui.set_face_check_message(if was_unnamed {
-                    "Twarz podpisana. Kliknij Skanuj i rozpoznaj. Zapisz osobę, aby zachować ją na później.".into()
-                } else { "Nazwa zmieniona. Zapisz osobę, aby zachować zmianę po ponownym uruchomieniu.".into() });
+                    "Twarz gotowa. Wybierz zastosowania i zapisz konfigurację.".into()
+                } else {
+                    "Nazwa zmieniona. Zapisz osobę, aby zachować zmianę po ponownym uruchomieniu."
+                        .into()
+                });
+                if was_unnamed {
+                    ui.set_page(2);
+                }
             }
             Err(error) => {
                 ui.set_recognition_state(0);
@@ -848,6 +881,7 @@ fn recognition_message(
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StorageAction {
     Save,
+    SaveAndConfigure,
     Load,
     Delete,
 }
@@ -871,13 +905,25 @@ fn configure_reference_storage(
             return;
         }
         let password = zeroize::Zeroizing::new(ui.get_reference_password().as_bytes().to_vec());
+        let setup = action == StorageAction::SaveAndConfigure;
+        let choices = [
+            ui.get_use_for_sudo(),
+            ui.get_use_for_login(),
+            ui.get_use_for_unlock(),
+        ];
         let confirmation =
             zeroize::Zeroizing::new(ui.get_reference_password_confirm().as_bytes().to_vec());
         ui.set_reference_password("".into());
         ui.set_reference_password_confirm("".into());
         if action != StorageAction::Delete
-            && let Err(message) =
-                validate_reference_password(&password, &confirmation, action == StorageAction::Save)
+            && let Err(message) = validate_reference_password(
+                &password,
+                &confirmation,
+                matches!(
+                    action,
+                    StorageAction::Save | StorageAction::SaveAndConfigure
+                ),
+            )
         {
             ui.set_storage_message(message.into());
             return;
@@ -893,9 +939,17 @@ fn configure_reference_storage(
             return;
         };
         let path = base.join("linux-hello/diagnostic-reference");
+        let setup_path = path.clone();
+        let setup_password =
+            zeroize::Zeroizing::new(if setup { password.to_vec() } else { Vec::new() });
         ui.set_face_check_running(true);
         ui.set_reference_io_running(true);
         ui.set_storage_message("Przetwarzam zaszyfrowany zapis osoby…".into());
+        if setup {
+            ui.set_system_message(
+                "Zapisuję twarz. Następnie pojawi się systemowe okno administratora.".into(),
+            );
+        }
         let reference = reference.clone();
         let weak = weak.clone();
         let job = handle.spawn(async move {
@@ -903,7 +957,7 @@ fn configure_reference_storage(
             let result = tokio::task::spawn_blocking(move || {
                 let mut reference = reference.lock().expect("session reference mutex");
                 let result = match action {
-                    StorageAction::Save => reference.save(&path, &password).map(|()| "Osoba zapisana. Po ponownym uruchomieniu wpisz hasło i wybierz Wczytaj osobę.".to_string()),
+                    StorageAction::Save | StorageAction::SaveAndConfigure => reference.save(&path, &password).map(|()| "Osoba zapisana.".to_string()),
                     StorageAction::Load => reference.load(&path, &password).map(|()| "Osoba wczytana. Wróć do zakładki Osoba i wybierz oryginalną kamerę oraz tryb IR.".to_string()),
                     StorageAction::Delete => reference.delete_saved(&path).map(|removed| if removed { "Saved reference deleted; memory reference cleared.".into() } else { "No saved reference found; memory reference cleared.".into() }),
                 };
@@ -914,13 +968,25 @@ fn configure_reference_storage(
                 Ok(Err(error)) => (format!("Reference operation failed: {error}. Check the passphrase and storage permissions."), false, 0, false),
                 Err(error) => (format!("Reference worker failed: {error}"), false, 0, false),
             };
+            let mut configured = None;
+            if success && setup {
+                let setup_ui = weak.clone();
+                configured = Some(tokio::task::spawn_blocking(move || system_setup::configure(&setup_path, &setup_password, choices, setup_ui)).await);
+            }
             let _ = weak.upgrade_in_event_loop(move |ui| {
                 ui.set_face_check_running(false);
                 ui.set_reference_io_running(false);
                 ui.set_storage_message(message.into());
+                if let Some(result) = configured {
+                    match result {
+                        Ok(Ok(message)) => { ui.set_system_message(message.into()); ui.set_system_configured(true); }
+                        Ok(Err(message)) => { ui.set_system_message(message.into()); ui.set_system_configured(false); }
+                        Err(_) => { ui.set_system_message("Osoba zapisana, ale konfiguracja systemu nie została ukończona. Spróbuj ponownie.".into()); ui.set_system_configured(false); }
+                    }
+                }
                 if success {
                     sync_person_ui(&ui, &ui_reference.lock().expect("session reference mutex"));
-                    if action != StorageAction::Save { ui.set_recognition_state(0); }
+                    if !matches!(action, StorageAction::Save | StorageAction::SaveAndConfigure) { ui.set_recognition_state(0); }
                     ui.set_template_present(template);
                     ui.set_reference_present(template);
                     if action == StorageAction::Load { ui.set_sample_count(count); }
@@ -935,6 +1001,8 @@ fn configure_reference_storage(
     });
     let save = operation.clone();
     window.on_save_reference(move || save(StorageAction::Save));
+    let setup = operation.clone();
+    window.on_save_and_configure(move || setup(StorageAction::SaveAndConfigure));
     let load = operation.clone();
     window.on_load_reference(move || load(StorageAction::Load));
     window.on_delete_reference(move || operation(StorageAction::Delete));
@@ -949,12 +1017,10 @@ fn validate_reference_password(
     if password.len() > 1024
         || std::str::from_utf8(password).map_or(true, |p| p.chars().count() < 12)
     {
-        return Err(
-            "Use a separate reference passphrase of at least 12 characters (maximum 1024 bytes).",
-        );
+        return Err("Wybierz osobne hasło zapisu: minimum 12 znaków, maksymalnie 1024 bajty.");
     }
     if saving && password != confirmation {
-        return Err("The two passphrases differ. Enter both again.");
+        return Err("Hasła zapisu różnią się. Wpisz oba ponownie.");
     }
     Ok(())
 }

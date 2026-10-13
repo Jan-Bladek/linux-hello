@@ -1,5 +1,22 @@
 import { Button, ComboBox, GroupBox, HorizontalBox, VerticalBox, TabWidget, TextEdit, LineEdit, SpinBox, CheckBox, ScrollView, Palette } from "std-widgets.slint";
 
+component UseCard inherits Rectangle {
+    in-out property <bool> checked;
+    in property <string> heading;
+    in property <string> description;
+    in property <bool> option-enabled: true;
+    preferred-height: 106px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: checked ? #477be0 : #dce3ef;
+    background: Palette.background;
+    VerticalBox {
+        padding: 14px; spacing: 8px;
+        CheckBox { text: root.heading; checked <=> root.checked; enabled: root.option-enabled; }
+        Text { text: root.description; wrap: word-wrap; color: Palette.foreground; font-size: 12px; }
+    }
+}
+
 export component SettingsWindow inherits Window {
     title: "Linux Hello";
     preferred-width: 980px;
@@ -12,12 +29,20 @@ export component SettingsWindow inherits Window {
     in-out property <int> selected-device: 0;
     in-out property <int> timeout-seconds: 10;
     in-out property <bool> session-bus: false;
-    in-out property <int> page: 0;
+    in-out property <int> page: 1;
+    in-out property <bool> developer-mode: false;
+    in-out property <bool> use-for-sudo: true;
+    in-out property <bool> use-for-login: true;
+    in-out property <bool> use-for-unlock: true;
+    in property <bool> system-configured: false;
+    in property <string> account-name: "bieżący użytkownik";
+    in property <string> system-message: "Wybierz zastosowania twarzy. Zapis i konfigurację zatwierdzisz jednym oknem administratora.";
+    callback save-and-configure();
     in property <bool> preview-running: false;
     in-out property <bool> use-ir-emitter: false;
     in property <bool> refreshing: false;
     in property <image> preview-image;
-    in property <string> camera-message: "Camera is off. Select Refresh to discover devices.";
+    in property <string> camera-message: "Przygotowuję listę kamer…";
     in property <string> daemon-message: "Daemon not queried";
     in property <string> diagnostics: "Refresh to read local device and service diagnostics.";
     in property <string> preview-message: "No frames are recorded. Preview ends automatically.";
@@ -29,7 +54,7 @@ export component SettingsWindow inherits Window {
     callback test-saved-person();
     callback test-other-person();
     callback clear-trials();
-    in property <string> face-check-message: "Face check requires the optional diagnostic build and local models.";
+    in property <string> face-check-message: "Dodawanie twarzy wymaga pełnej wersji aplikacji i zainstalowanych modeli.";
     in property <bool> reference-present: false;
     in property <bool> template-present: false;
     in property <bool> reference-io-running: false;
@@ -72,7 +97,7 @@ export component SettingsWindow inherits Window {
             VerticalBox {
                 padding: 0;
                 Text { text: "Linux Hello"; font-size: 30px; font-weight: 700; color: Palette.foreground; }
-                Text { text: "Twoja zapisana osoba. Wszystko lokalnie."; color: Palette.foreground; }
+                Text { text: "Jedna twarz. Konto: " + root.account-name + ". Wszystko lokalnie."; color: Palette.foreground; }
             }
             Button { width: 120px; height: 40px; text: root.refreshing ? "Odświeżam…" : "Odśwież"; enabled: !root.refreshing && !root.preview-running && !root.face-check-running; clicked => { root.refresh(); } }
         }
@@ -80,7 +105,7 @@ export component SettingsWindow inherits Window {
             height: 48px;
             border-radius: 8px;
             background: #f9e8c6;
-            Text { x: 16px; width: parent.width - 32px; height: parent.height; vertical-alignment: center; wrap: word-wrap; color: #513b12; text: "Tryb eksperymentalny · Rozpoznawanie lokalne. Logowanie systemowe jest wyłączone."; }
+            Text { x: 16px; width: parent.width - 32px; height: parent.height; vertical-alignment: center; wrap: word-wrap; color: #513b12; text: "Eksperymentalna biometria · Hasło pozostaje dostępne. Ochrona przed zdjęciem i nagraniem nie jest zwalidowana."; }
         }
         TabWidget {
             current-index <=> root.page;
@@ -88,16 +113,20 @@ export component SettingsWindow inherits Window {
                 title: "Przegląd";
                 VerticalBox {
                     spacing: 18px;
-                    GroupBox { title: "Authentication"; VerticalBox {
-                        Text { text: "Face enrollment and login: unavailable"; color: Palette.foreground; }
-                        Text { text: "PAM module: not implemented · No integration enabled by this application"; color: Palette.foreground; wrap: word-wrap; }
+                    GroupBox { title: "Twoja twarz"; VerticalBox {
+                        Text { text: root.template-present ? root.active-person-name : "Nie dodano jeszcze twarzy w tej aplikacji"; font-size: 24px; font-weight: 700; color: Palette.foreground; }
+                        Text { text: "Zeskanuj twarz, nadaj nazwę i wybierz, gdzie chcesz jej używać."; color: Palette.foreground; wrap: word-wrap; }
+                        Button { text: root.template-present ? "Przejdź do swojej twarzy" : "Dodaj twarz"; clicked => { root.page = 1; } }
                     } }
-                    GroupBox { title: "Camera"; VerticalBox {
+                    GroupBox { title: "Konfiguracja konta"; VerticalBox {
+                        Text { text: root.system-message; wrap: word-wrap; color: Palette.foreground; }
+                        Button { text: "Wybierz zastosowania"; clicked => { root.page = 2; } }
+                    } }
+                    GroupBox { title: "Kamera"; VerticalBox {
                         Text { text: root.camera-message; color: Palette.foreground; wrap: word-wrap; }
-                        Text { text: "IR format hints do not establish liveness or device trust."; color: Palette.foreground; wrap: word-wrap; }
+                        if root.developer-mode: Text { text: "Oznaczenie IR nie potwierdza obecności żywej osoby ani zaufania do urządzenia."; color: Palette.foreground; wrap: word-wrap; }
                     } }
-                    GroupBox { title: "Local service"; Text { text: root.daemon-message; color: Palette.foreground; wrap: word-wrap; } }
-                    Text { text: "Use Camera to check your hardware. Your existing password authentication remains available."; wrap: word-wrap; color: Palette.foreground; }
+                    if root.developer-mode: GroupBox { title: "Usługa diagnostyczna"; Text { text: root.daemon-message; color: Palette.foreground; wrap: word-wrap; } }
                 }
             }
             Tab {
@@ -110,13 +139,13 @@ export component SettingsWindow inherits Window {
                         spacing: 10px;
                         HorizontalBox {
                             ComboBox { model: root.devices; current-index <=> root.selected-device; enabled: !root.preview-running && !root.face-check-running && !root.enrollment-active; horizontal-stretch: 1; }
-                            CheckBox { text: "IR"; checked <=> root.use-ir-emitter; enabled: !root.preview-running && !root.face-check-running && !root.enrollment-active; }
+                            CheckBox { text: "Podczerwień"; checked <=> root.use-ir-emitter; enabled: !root.preview-running && !root.face-check-running && !root.enrollment-active; }
                             Button { text: "Stop"; enabled: root.preview-running || (root.face-check-running && !root.reference-io-running); clicked => { root.stop-preview(); } }
                         }
                         HorizontalBox {
                             Text { text: root.enrollment-active || !root.template-present ? "1  SKANUJ" : "1  ZESKANOWANO"; color: root.enrollment-active || !root.template-present ? #3d70dc : Palette.foreground; font-weight: 600; horizontal-stretch: 1; }
                             Text { text: root.person-needs-name ? "2  PODPISZ TWARZ" : "2  NADAJ NAZWĘ"; color: root.person-needs-name ? #3d70dc : Palette.foreground; horizontal-stretch: 1; }
-                            Text { text: "3  ROZPOZNAJ"; color: root.template-present && !root.person-needs-name && !root.enrollment-active ? #3d70dc : Palette.foreground; horizontal-stretch: 1; }
+                            Text { text: "3  ZAPISZ I WŁĄCZ"; color: root.template-present && !root.person-needs-name && !root.enrollment-active ? #3d70dc : Palette.foreground; horizontal-stretch: 1; }
                         }
                         scan-panel := Rectangle {
                             height: root.height < 700px ? 180px : 220px;
@@ -182,7 +211,7 @@ export component SettingsWindow inherits Window {
                             }
                             if root.enrollment-active: Button { text: "Anuluj dodawanie"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.cancel-person(); } }
                             if root.template-present && !root.enrollment-active: Button { text: "Dodaj inną twarz"; enabled: !root.face-check-running && !root.preview-running && !root.refreshing && root.devices.length > 0 && root.models-directory != ""; clicked => { root.scan-person(); } }
-                            Button { text: "Zapisz / wczytaj"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.page = 2; } }
+                            Button { text: "Zapisz i skonfiguruj"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.page = 2; } }
                         }
                         if root.recognition-state != 1 && root.recognition-state != 2 && root.recognition-state != 3: Text { text: root.face-check-message; wrap: word-wrap; color: Palette.foreground; font-size: 12px; }
                     }
@@ -196,7 +225,17 @@ export component SettingsWindow inherits Window {
                     settings-content := VerticalBox {
                         width: parent.width;
                         height: self.preferred-height;
-                    GroupBox { title: "Diagnostic capture"; VerticalBox {
+                    GroupBox { title: "Gdzie używać tej twarzy?"; VerticalBox {
+                        Text { text: "Zaznacz wybrane funkcje dla swojego konta. Po zapisaniu konfiguracja wykona się automatycznie — bez komend w terminalu."; wrap: word-wrap; color: Palette.foreground; }
+                        HorizontalBox {
+                            spacing: 10px;
+                            UseCard { heading: "Sudo"; description: "Zatwierdzanie poleceń wymagających uprawnień."; checked <=> root.use-for-sudo; option-enabled: !root.face-check-running; }
+                            UseCard { heading: "Logowanie KDE"; description: "Wejście na konto po uruchomieniu komputera."; checked <=> root.use-for-login; option-enabled: !root.face-check-running; }
+                            UseCard { heading: "Odblokowanie"; description: "Powrót do sesji po Win + L."; checked <=> root.use-for-unlock; option-enabled: !root.face-check-running; }
+                        }
+                        Text { text: root.system-message; wrap: word-wrap; color: root.system-configured ? #188357 : Palette.foreground; }
+                    } }
+                    if root.developer-mode: GroupBox { title: "Podgląd kamery"; VerticalBox {
                         HorizontalBox {
                             Text { text: "Preview timeout (seconds)"; color: Palette.foreground; vertical-alignment: center; }
                             SpinBox { minimum: 1; maximum: 30; value <=> root.timeout-seconds; enabled: !root.preview-running && !root.face-check-running; }
@@ -211,26 +250,27 @@ export component SettingsWindow inherits Window {
                             Button { text: "Usuń z pamięci"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.forget-face(); } }
                         }
                     } }
-                    if root.face-check-available: GroupBox { title: "Zapisz / wczytaj osobę"; VerticalBox {
-                        Text { text: "Nazwa i próbki zostaną zaszyfrowane razem. Wybierz osobne hasło (co najmniej 12 znaków)."; wrap: word-wrap; color: Palette.foreground; }
+                    if root.face-check-available: GroupBox { title: "Zapisz twarz i dokończ konfigurację"; VerticalBox {
+                        Text { text: "Wybierz osobne hasło do zaszyfrowanego zapisu (minimum 12 znaków). Następnie zatwierdź systemowe okno administratora i patrz w kamerę podczas testów."; wrap: word-wrap; color: Palette.foreground; }
                         LineEdit { placeholder-text: "Hasło zapisanej osoby"; input-type: password; text <=> root.reference-password; enabled: !root.face-check-running; }
                         LineEdit { placeholder-text: "Powtórz hasło przy zapisie"; input-type: password; text <=> root.reference-password-confirm; enabled: !root.face-check-running; }
                         HorizontalBox {
-                            Button { text: "Zapisz osobę"; enabled: root.template-present && !root.face-check-running && !root.preview-running; clicked => { root.save-reference(); } }
+                            Button { text: root.reference-io-running ? "Konfiguruję…" : "Zapisz i skonfiguruj"; enabled: root.template-present && !root.person-needs-name && !root.enrollment-active && !root.face-check-running && !root.preview-running; clicked => { root.save-and-configure(); } }
+                            if root.developer-mode: Button { text: "Zapisz tylko w aplikacji"; enabled: root.template-present && !root.enrollment-active && !root.face-check-running && !root.preview-running; clicked => { root.save-reference(); } }
                             Button { text: "Wczytaj osobę"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.load-reference(); } }
                             Button { text: "Usuń zapisany plik"; enabled: !root.face-check-running && !root.preview-running; clicked => { root.delete-reference(); } }
                         }
                         Text { text: root.storage-message; wrap: word-wrap; color: Palette.foreground; }
-                        Text { text: "Po ponownym uruchomieniu wpisz hasło w pierwszym polu i wybierz Wczytaj osobę. Zapis nie włącza logowania."; wrap: word-wrap; color: Palette.foreground; }
+                        Text { text: "Hasło zapisu chroni lokalną kopię. Nie jest hasłem administratora. Przy następnym uruchomieniu możesz wczytać osobę; system korzysta z osobnego chronionego wzorca."; wrap: word-wrap; color: Palette.foreground; }
                     } }
-                    if root.face-check-available: GroupBox { title: "Experimental recognition"; VerticalBox {
+                    if root.face-check-available && root.developer-mode: GroupBox { title: "Próg rozpoznawania"; VerticalBox {
                         HorizontalBox {
                             Text { text: "Próg podobieństwa (0,80–1,00)"; color: Palette.foreground; }
                             LineEdit { text <=> root.recognition-threshold; enabled: !root.face-check-running; horizontal-stretch: 1; }
                         }
-                        Text { text: "Ścisłe rozpoznawanie: cechy każdego ujęcia, wzorzec średni, proporcje twarzy i 5 etapów losowej kontroli ruchu głowy. Próg minimum 0,80. Stary wzorzec wymaga ponownego skanowania. Kontrola ruchu jest eksperymentalna: brak zweryfikowanego PAD i logowania systemowego."; wrap: word-wrap; color: Palette.foreground; }
+                        Text { text: "Trzy nowe zgodne ujęcia, wzorzec średni, zapisane przykłady i proporcje twarzy. Próg minimum 0,80; brak zwalidowanego PAD. Zmiana tutaj dotyczy testów GUI, nie konfiguracji PAM."; wrap: word-wrap; color: Palette.foreground; }
                     } }
-                    if root.face-check-available: GroupBox { title: "Manual recognition trials"; VerticalBox {
+                    if root.face-check-available && root.developer-mode: GroupBox { title: "Testy rozpoznawania"; VerticalBox {
                         Text { text: "Select the camera/IR mode in Camera first. Choose Saved person for the reference owner, Other person for someone else with their consent. Each click checks 3 fresh captures."; wrap: word-wrap; color: Palette.foreground; }
                         HorizontalBox {
                             Button { text: "Test saved person"; enabled: root.template-present && root.sample-count >= root.sample-target && !root.face-check-running && !root.preview-running && !root.refreshing && root.devices.length > 0 && root.models-directory != ""; clicked => { root.test-saved-person(); } }
@@ -241,7 +281,7 @@ export component SettingsWindow inherits Window {
                         Text { text: root.trial-message; wrap: word-wrap; color: Palette.foreground; }
                         Text { text: "Counts stay in memory until Clear trials or window close. Labels are declared by you. Inconclusive and acquisition failures stay separate; cancellation is not counted. Clear trials after changing reference or threshold. No calibrated accuracy or login authorization."; wrap: word-wrap; color: Palette.foreground; }
                     } }
-                    if root.face-check-available: GroupBox { title: "Diagnostyka kamery i modeli"; VerticalBox {
+                    if root.face-check-available && root.developer-mode: GroupBox { title: "Diagnostyka kamery i modeli"; VerticalBox {
                         LineEdit { placeholder-text: "Local model directory"; text <=> root.models-directory; enabled: !root.face-check-running && !root.enrollment-active; }
                         HorizontalBox {
                             Button { text: "Check face"; enabled: !root.face-check-running && !root.preview-running && !root.refreshing && root.devices.length > 0 && root.models-directory != ""; clicked => { root.check-face(); } }
@@ -250,28 +290,27 @@ export component SettingsWindow inherits Window {
                         }
                         Button { text: "Test ruchu głowy (diagnostyka)"; enabled: root.template-present && !root.face-check-running && !root.preview-running && !root.refreshing && root.devices.length > 0 && root.models-directory != ""; clicked => { root.test-motion(); } }
                     } }
-                    CheckBox { text: "Query a development session-bus daemon"; checked <=> root.session-bus; enabled: !root.refreshing; }
-                    Text { text: "A session daemon cannot authorize system authentication. Default queries use the system bus."; color: Palette.foreground; wrap: word-wrap; }
-                    GroupBox { title: "System integration"; Text { text: "No authentication switches are available in this release. PAM and Polkit login require separate security review and Fedora VM recovery tests."; color: Palette.foreground; wrap: word-wrap; } }
+                    CheckBox { text: "Tryb deweloperski — diagnostyka i zaawansowane ustawienia"; checked <=> root.developer-mode; enabled: !root.face-check-running; }
+                    if root.developer-mode: CheckBox { text: "Diagnostyczny D-Bus sesji"; checked <=> root.session-bus; enabled: !root.refreshing; }
                 }
                 }
             }
             Tab {
                 title: "Bezpieczeństwo";
                 VerticalBox {
-                    Text { text: "Security capabilities"; font-size: 22px; font-weight: 600; color: Palette.foreground; }
-                    Text { text: "Face model: none selected\nPresentation attack detection: unavailable\nInitial Lenovo hardware: not validated\nEncrypted diagnostic reference: optional, passphrase protected\nTPM key protection: not implemented\nPrivileged authentication: unavailable"; color: Palette.foreground; wrap: word-wrap; }
-                    Text { text: "No cloud calls, telemetry or frame files are implemented. Diagnostic templates are saved only with Save encrypted. Camera preview stays in this process. Passing software tests does not establish resistance to physical attacks."; color: Palette.foreground; wrap: word-wrap; }
+                    Text { text: "Prywatność i bezpieczeństwo"; font-size: 22px; font-weight: 600; color: Palette.foreground; }
+                    Text { text: "Twoja twarz jest przetwarzana lokalnie. Zapis jest szyfrowany, a wzorzec logowania chroniony przed zmianą przez zwykłe aplikacje.\n\nHasło konta nadal działa. Rozpoznawanie jest eksperymentalne: ochrona przed zdjęciem lub nagraniem nie została zwalidowana. Kamera IR nie jest dowodem żywotności. TPM nie jest używany."; color: Palette.foreground; wrap: word-wrap; }
+                    Text { text: "Usunięcie lokalnego zapisu nie usuwa chronionego wzorca systemowego. Aby wyłączyć twarz w systemie, odznacz zastosowania i zapisz konfigurację."; color: Palette.foreground; wrap: word-wrap; }
                 }
             }
             Tab {
-                title: "Diagnostyka";
+                title: root.developer-mode ? "Diagnostyka" : "Pomoc";
                 VerticalBox {
-                    Text { text: "Local device metadata · No image data or templates"; color: Palette.foreground; }
-                    TextEdit { text: root.diagnostics; read-only: true; }
+                    if root.developer-mode: TextEdit { text: root.diagnostics; read-only: true; }
+                    if !root.developer-mode: Text { text: "1. Dodaj twarz w zakładce Osoba.\n2. Nadaj jej nazwę.\n3. Wybierz zastosowania i użyj Zapisz i skonfiguruj.\n\nPodczas testów patrz prosto w kamerę. Na ekranie logowania wybierz konto i naciśnij Enter. Po Win + L pokaż ekran odblokowania. Jeśli twarz nie pasuje, użyj zwykłego hasła."; wrap: word-wrap; color: Palette.foreground; }
                 }
             }
         }
-        Text { text: "0.1.0-dev  ·  Diagnostic release  ·  Camera access follows your Linux session permissions"; color: Palette.foreground; font-size: 12px; }
+        Text { text: root.developer-mode ? "0.1.0-dev · Tryb deweloperski · Diagnostyka nie omija uwierzytelnienia" : "Linux Hello · Twoje dane pozostają na tym komputerze"; color: Palette.foreground; font-size: 12px; }
     }
 }

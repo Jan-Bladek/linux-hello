@@ -90,6 +90,18 @@ fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()>
     if !permitted(service, uid, caller) {
         return None;
     }
+    if matches!(service, "sudo" | "sudo-i") {
+        let disabled = Path::new(boundary::ROOT)
+            .join(uid.to_string())
+            .join("pam-sudo.disabled");
+        // Legacy enrolled profiles remain enabled. A root-only per-account
+        // disable never removes sudo access for another enrolled account.
+        match std::fs::symlink_metadata(disabled) {
+            Ok(_) => return None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(_) => return None,
+        }
+    }
     // SAFETY: geteuid takes no pointers. Only the self-bound locker launcher
     // accepts a non-root PAM caller; sudo/display-manager paths remain root.
     if unsafe { libc::geteuid() } != 0 && service != "kde" {

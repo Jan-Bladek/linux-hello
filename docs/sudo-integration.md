@@ -51,7 +51,9 @@ without symlink traversal and does not alter the original GUI store. It requires
 root and decrypts the envelope bound to the intended account UID. A random root
 key encrypts the imported template under `/var/lib/linux-hello/sudo/<uid>` (0700;
 key, config and template 0600). The account name comes from NSS, not a display
-label. Changing/replacing the GUI reference cannot change the sudo copy.
+label. A local-only save does not change the sudo copy. The unified GUI **Zapisz i
+skonfiguruj** deliberately updates it after system authorization and live checks.
+See [unified setup](kde-login.md#unified-gui-setup).
 
 The installed verifier confirms the imported reference with live IR frames before
 enabling PAM. `manage.py enable --uid UID` requires a second live match and backs
@@ -69,6 +71,12 @@ UID0: in that case the adapter uses PAM_RUSER supplied by sudo's trusted plugin;
 it never trusts SUDO_USER or user environment values. Missing PAM_RUSER when the
 real UID is root causes password fallback. Root/system account templates are not
 supported. No enrollment or camera availability means immediate password fallback.
+
+An authorized face update preserves an existing stricter root threshold. The
+unified GUI can disable sudo for its own account through a root-private
+`pam-sudo.disabled` marker; any existing marker or metadata error rejects this
+biometric path. Absence preserves legacy enrolled profiles. This does not remove
+the global PAM line or another account's enrollment.
 
 ## Verification and failures
 

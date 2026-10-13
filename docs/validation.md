@@ -1172,3 +1172,39 @@ Subsequent owner confirmation (2026-10-12): unlocking after Win + L works.
 This confirms the owner's successful use of the installed locker integration;
 it is not a measured FAR/FRR or presentation attack evaluation. No additional
 activation trace, latency measurements or camera samples were supplied.
+
+
+## Unified setup and user-focused GUI — 2026-10-13
+
+Implemented scan/name → three use cards → **Zapisz i skonfiguruj**. Ordinary mode
+uses Polish guidance; models, thresholds, motion tests and metadata are behind
+the developer switch. Startup enumerates devices without capture, prefers an IR
+candidate and uses installed pinned models when present. No root GUI or automatic
+startup enrollment was introduced. A desktop menu entry was created on the host.
+
+The GUI saves its encrypted reference, invokes the fixed installed helper through
+pkexec, and sends bounded choices/source and a framed reference passphrase through
+a private pipe. The administrator/OS account password is handled by the system
+agent. Root setup derives its own subject UID, checks protected code before imports,
+serializes changes and runs existing real import/verification and PAM checks.
+Normal failure/result-pipe loss restores previous protected profile/PAM files.
+A local save can remain successful while system setup fails; the UI distinguishes
+these outcomes. Existing stricter root thresholds are preserved. Per-account sudo
+disabling leaves other users' shared sudo path unchanged. Hard kill/power loss and
+independent security review remain limitations.
+
+Checks passed: feature PAM8, GUI11 (including exact response validation and actual
+headless layout), helper2 (including bounded pipe and threshold preservation),
+default PAM1, optional/default Clippy checks with warnings denied, formatting and
+release build. Python31 tests passed, including request validation and rollback.
+Documentation links passed. Rendered all ordinary pages at980×740 and760×660 and
+inspected the settings screenshot; it contains UI only, no camera frames.
+
+Installed updated root helper/PAM module and setup script. Real Linux-PAM dispatch
+in a recursively private mount namespace verified per-account sudo disabling,
+broken-marker rejection, other-account isolation, login/locker success/failure
+and preceding-required-denial preservation. Synthetic verifier exits were used;
+production references/PAM files were not changed by those fixtures. No new live
+enrollment or end-to-end Polkit GUI setup with the owner's passphrase was performed.
+The new workflow needs an owner-operated scan/save/system authorization for final
+physical acceptance; existing previously confirmed sudo/login/unlock remains.

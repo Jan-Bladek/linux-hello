@@ -220,3 +220,13 @@ preserves password fallback and does not change authselect/system-auth. It has
 no validated presentation attack detection or measured representative NIR FAR/FRR.
 KDE setup, including the self-only locker launcher, is documented in
 [KDE login and Win + L](kde-login.md). Enabling sudo does not enable KDE automatically.
+
+## Full GUI setup
+
+After sudo/KDE helper installation, the full GUI offers **Zapisz i skonfiguruj**
+with selectable sudo, KDE login and Win + L cards. `pkexec` and a working Polkit
+agent are required. The KDE installer installs `configure-person.py`; no separate
+manual activation is needed for the selected uses after the GUI live checks pass.
+See [unified setup](kde-login.md#unified-gui-setup). The developer switch exposes
+local-only saving and advanced tools. Existing script-based activation/rollback
+remains available. Replacing a face preserves a stricter existing root threshold.

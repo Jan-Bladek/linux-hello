@@ -68,6 +68,37 @@ helper. Production verifier/worker retain their existing contexts and native
 worker sandbox. This policy was checked against this Fedora version; other
 policies require their own validation, not automatic permission expansion.
 
+## Unified GUI setup
+
+The KDE installer also installs root-owned `configure-person.py`. After scanning
+and naming in the full GUI, choose **Sudo**, **Logowanie KDE** and **Odblokowanie**
+cards and select **Zapisz i skonfiguruj**. The reference is saved encrypted first;
+`pkexec` supplies one system authorization for setup. The root helper derives the
+only account from Polkit's `PKEXEC_UID` and NSS, never the face label or an input
+UID. It accepts bounded boolean choices, a private user-reference directory and
+framed passphrase through stdin. Source import still checks UID ownership,
+private files, links, size bounds and authenticated encryption.
+
+Protected import verifies the face; selected sudo and KDE managers run their
+existing live checks, including both private KDE stacks. These are sequential
+scans inside one operation, so stay in front of the camera. No GUI recognition
+result skips a check. An exclusive setup lock serializes this workflow. Normal
+failure, cancellation signal or broken result pipe restores the previous protected
+profile and affected PAM files. The local GUI save remains available even if
+system setup fails. SIGKILL/power loss cannot guarantee this multi-file rollback;
+keep password recovery available. Backups are not a biometric accuracy result.
+
+Selections apply only to this account. Per-account `pam-sudo.disabled` leaves
+other users' shared sudo integration intact; KDE uses its existing independent
+markers. An existing stricter system threshold is preserved when importing a new
+face. The UI's developer threshold still affects GUI trials only. Polkit has no
+new general-purpose enrollment/verification D-Bus endpoint; the diagnostic daemon
+remains read-only. The installer supplies this helper but does not activate it.
+
+The optional script-based activation below remains available for administrators
+and development. The full GUI needs `pkexec` and a working system authorization
+agent. It never asks for the account/administrator password in its own form.
+
 ## Activation and use
 
 Close any GUI camera preview and face the original IR camera:

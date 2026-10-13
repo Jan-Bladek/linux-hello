@@ -9,9 +9,28 @@ import subprocess
 import sys
 import tempfile
 import importlib.util
+import ctypes as c
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('kde_management',Path(__file__).with_name('manage-kde.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+
+def sudo_authenticate(conf, user):
+    """Actual PAM dispatch in this private namespace, no sudo command/session."""
+    pam=c.CDLL('libpam.so.0')
+    pam.pam_start_confdir.argtypes=[c.c_char_p,c.c_char_p,c.c_void_p,c.c_char_p,c.POINTER(c.c_void_p)]
+    pam.pam_set_item.argtypes=[c.c_void_p,c.c_int,c.c_void_p]
+    pam.pam_authenticate.argtypes=[c.c_void_p,c.c_int]
+    pam.pam_end.argtypes=[c.c_void_p,c.c_int]
+    callback=c.CFUNCTYPE(c.c_int,c.c_int,c.c_void_p,c.c_void_p,c.c_void_p)
+    @callback
+    def conversation(*_): return 19
+    class Conv(c.Structure): _fields_=[('callback',callback),('data',c.c_void_p)]
+    conv=Conv(conversation,None);handle=c.c_void_p();name=user.encode()
+    assert pam.pam_start_confdir(b'sudo',name,c.byref(conv),str(conf).encode(),c.byref(handle))==0
+    try:
+        assert pam.pam_set_item(handle,8,c.cast(c.c_char_p(name),c.c_void_p))==0
+        return pam.pam_authenticate(handle,0x8000) # informational prompt suppressed
+    finally: pam.pam_end(handle,0)
 
 BASE=Path('/usr/local/libexec/linux-hello-sudo')
 ROOT=Path('/var/lib/linux-hello/sudo')
@@ -57,6 +76,17 @@ def main():
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(probe),'plasmalogin',user,str(conf)]
         try:
             subprocess.run(['/usr/bin/mount','--bind',str(good),str(BASE/'hello-sudo')],check=True)
+            (conf/'sudo').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\n')
+            assert sudo_authenticate(conf,user)==0,'legacy enrolled own account remains enabled'
+            (profile/'pam-sudo.disabled').write_text('linux-hello-sudo-disabled-v1\n')
+            assert sudo_authenticate(conf,user)!=0,'disabled account cannot use the successful helper'
+            (profile/'pam-sudo.disabled').unlink()
+            (profile/'pam-sudo.disabled').symlink_to(profile/'absent-disable-target')
+            assert sudo_authenticate(conf,user)!=0,'broken disable marker must fail closed'
+            (profile/'pam-sudo.disabled').unlink()
+            other=state/str(uid+1);other.mkdir()
+            (other/'pam-sudo.disabled').write_text('linux-hello-sudo-disabled-v1\n')
+            assert sudo_authenticate(conf,user)==0,'another account disable must not disable this account'
             assert subprocess.run(command,timeout=10).returncode==0,'successful verifier must complete auth/account/setcred'
             (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n')
             assert subprocess.run(command,timeout=10).returncode==0,'diagnostics must preserve auth/account/setcred'

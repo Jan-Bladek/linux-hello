@@ -137,7 +137,8 @@ The positioning oval and scan animation are guides, not measured depth or livene
 
 Accepted samples are preserved after **Stop**; **Kontynuuj skan** resumes, while
 **Anuluj dodawanie** restores the previous reference. Completing the set replaces
-one GUI reference; it does not enroll a gallery or modify the protected PAM copy.
+one GUI reference; it does not enroll a gallery. A scan/local-only save does not modify the protected
+PAM copy; unified system setup does so only after authorization and live checks.
 Enter a name and choose **Podpisz twarz**. Names are local labels, 1–64 characters
 and at most 256 UTF-8 bytes, with control/bidi formatting characters rejected.
 Rename does not require recapture; save again to persist a change.
@@ -178,7 +179,10 @@ aggregate counts are not an independent FAR/FRR study or calibration dataset.
 
 ## Multi-sample encrypted diagnostic reference
 
-Use **Zapisz / wczytaj** or Settings to save/load the GUI reference. Saving requires
+After naming, Settings offers application cards and **Zapisz i skonfiguruj**.
+This saves the GUI reference and performs [unified system setup](kde-login.md#unified-gui-setup).
+Developer mode retains the local-only save and inference controls. Use
+**Wczytaj osobę** in Settings to load the GUI reference. Saving requires
 a separate passphrase of at least 12 Unicode characters, at most 1024 UTF-8 bytes,
 entered twice. Loading uses the first field. Input fields are cleared when work
 starts; keys/passphrase buffers are zeroizing, but Slint shared strings are not

@@ -47,7 +47,7 @@ trusted camera-to-daemon path.
 | Username spoofing over IPC | Resolve authenticated sender credentials at the system bus; map request context and target account through policy | No identity-bearing or sensitive RPCs exist |
 | Impersonated daemon | Restricted system-bus name ownership; clients require that bus and interface/version; reject owner changes mid-request | Packaged name restricted to dedicated service account; session mode diagnostic only |
 | Replayed verification result | Request-scoped deadline, requester unique name, target UID, service binding, one-shot consumption; cancel on disconnect | No verification result/token API exists |
-| Unauthorized enrollment/deletion | Explicit account scope and administrator authorization for root import; private storage | GUI edits affect its own reference only; root-owned PAM copy requires privileged import |
+| Unauthorized enrollment/deletion | Explicit account scope and administrator authorization for root import; private storage | Local-only GUI edits affect its own reference; unified setup requires pkexec authorization and root live verification |
 | Privilege escalation from GUI/model/parser | GUI unprivileged; no shell evaluation of inputs; privileged surface minimal; model worker isolated | GUI has no system authority; fixed root verifier and self-only setuid launcher are privileged surfaces |
 | Template theft | AEAD, authenticated metadata, private files, separation of key from data, no template export | GUI passphrase-derived key; separate root-only PAM key/template; no TPM or offline key separation |
 | Symlink/hardlink/path traversal race | Trusted parent directory, ownership/mode checks, nofollow descriptor access, exclusive creation, atomic writes | Storage safeguards require review; never use a writable shared directory |
@@ -114,6 +114,15 @@ disk attacker. Root verification checks fixed, non-writable root-owned ancestors
 store paths, models and target identity are not selected by GUI input. The locker
 launcher takes no arguments and derives the only target from kernel real UID.
 It executes only the fixed verifier and exposes no enrollment or export API.
+The separate GUI setup helper runs through pkexec, derives its subject from
+PKEXEC_UID/NSS and accepts no alternate UID or service name. It validates installed
+code before importing it, serializes setup, imports a private encrypted own-account
+reference and uses the existing live verification/activation managers. Normal
+errors and broken result pipes restore previous profile/PAM files. Hard kill or
+power loss cannot guarantee multi-file rollback. The reference passphrase travels
+only over a bounded private pipe; Python/GUI temporary copies are not guaranteed
+to be fully zeroized. Root setup disables core dumps. No account password is
+collected in the application form.
 
 Evaluate root-only service credentials or TPM-sealed keys, including backup,
 rotation, reinstall, firmware updates, recovery and device theft. A TPM seal can
