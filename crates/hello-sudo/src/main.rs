@@ -19,6 +19,7 @@ use std::{
 };
 use zeroize::Zeroizing;
 type Error = Box<dyn std::error::Error + Send + Sync>;
+mod tpm;
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
@@ -50,6 +51,9 @@ fn directory(uid: u32) -> PathBuf {
     Path::new(boundary::ROOT).join(uid.to_string())
 }
 fn key(uid: u32) -> Result<hello_storage::SecretKey, Error> {
+    if let Some(key) = tpm::load(uid)? {
+        return Ok(key);
+    }
     let mut bytes = Zeroizing::new([0; 32]);
     let file = protected_file(&directory(uid).join("key"), true, 32)?;
     if file.metadata()?.len() != 32 {
@@ -249,7 +253,12 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
     };
     protected_path(&dir.join("key"))?;
     let keypath = dir.join("key");
-    if !keypath.exists() {
+    let has_tpm = match fs::symlink_metadata(dir.join("key.tpm")) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
+    if !keypath.exists() && !has_tpm {
         let mut bytes = Zeroizing::new([0; 32]);
         getrandom::fill(&mut *bytes)?;
         let mut file = OpenOptions::new()
@@ -372,8 +381,22 @@ async fn run() -> Result<(), Error> {
             drop(password);
             verify(uid, cancel, false).await
         }
+        [command, uid] if command == "tpm-status" => {
+            let uid = uid.parse()?;
+            if tpm::load(uid)?.is_some() {
+                load(uid)?;
+                println!("TPM: enabled; key and encrypted template validated");
+            } else {
+                load(uid)?;
+                println!("TPM: disabled; legacy protected key");
+            }
+            Ok(())
+        }
+        [command, uid] if command == "tpm-enable" => tpm::enable(uid.parse()?),
         [command, uid] if command == "diagnose" => verify(uid.parse()?, cancel, true).await,
-        _ => Err("Usage: hello-sudo enroll USER | verify UID | diagnose UID".into()),
+        _ => {
+            Err("Usage: hello-sudo enroll USER | verify UID | diagnose UID | tpm-enable UID | tpm-status UID".into())
+        }
     };
     watcher.abort();
     result

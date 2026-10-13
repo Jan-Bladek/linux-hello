@@ -134,3 +134,9 @@ The privileged namespace regression also checks actual sudo PAM dispatch with
 missing, valid and broken per-account disable markers; another user's disable
 cannot affect this account. It remains a simulated verifier test, not a live
 biometric or complete Polkit GUI acceptance test.
+
+## Real TPM checks
+
+See [TPM protection](../docs/tpm.md) for the explicitly invoked root-only real-TPM
+regression and optional KDE key-release context checks. They use synthetic data
+and private mount namespaces; ordinary tests do not require TPM hardware.

@@ -81,7 +81,7 @@ def configure(data, secret, account, sudo, kde):
     service = kde.detect() if data['login'] else None
     profile = sudo.ROOT / str(uid)
     sudo.protected(sudo.ROOT / '.anchor', True)
-    paths = [profile / name for name in ('key', 'template.lht', 'config.json',
+    paths = [profile / name for name in ('key', 'key.tpm', 'template.lht', 'config.json',
              'pam-sudo.disabled', 'pam-kde.enabled', '.config-pending')]
     paths += [sudo.PAM, PAM_DIR / 'kde', PAM_DIR / kde.SUBSTACK]
     for candidate in kde.SERVICES:

@@ -200,7 +200,7 @@ sensor/IR binding. No raw image, plaintext name sidecar or embedding file is sav
 An advisory directory lock spans salt/decrypt/save/delete. Saving over an existing
 reference first authenticates it; wrong passphrases preserve its bytes. Missing
 salt beside ciphertext fails. Delete removes the template and clears memory while
-retaining the public salt. Physical erasure, anti-rollback, TPM protection, swap
+retaining the public salt. Physical erasure, anti-rollback, GUI-store TPM protection, swap
 exclusion and protection against root/same-UID compromise are not guaranteed.
 A forgotten passphrase requires deletion and a new reference.
 

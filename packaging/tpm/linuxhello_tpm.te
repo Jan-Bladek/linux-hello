@@ -1,0 +1,11 @@
+module linuxhello_tpm 1.0;
+require {
+    type xdm_t;
+    type tpm_device_t;
+    class chr_file { open read write };
+}
+# Optional TPM key release for Fedora's root display-manager domain.
+# tpm2-tss opens and reads/writes the kernel
+# resource manager. No key/profile writes, network or domain bypass is allowed.
+# This applies to tpm_device_t, not only one device pathname; review that scope.
+allow xdm_t tpm_device_t:chr_file { open read write };

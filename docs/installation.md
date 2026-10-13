@@ -2,7 +2,7 @@
 
 Version 0.1.0-dev is a development preview. These steps build real camera
 diagnostics and a desktop preview; they do not enable facial authentication. The
-production model/PAD and TPM release gates remain closed. A separate explicit
+production model/PAD and measured-boot qualification gates remain closed. Optional [TPM key wrapping](tpm.md) is separate. A separate explicit
 experimental sudo/KDE login/unlock opt-ins are linked at the end of this document.
 
 ## Fedora development build

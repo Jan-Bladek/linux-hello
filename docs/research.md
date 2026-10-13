@@ -125,7 +125,7 @@ and [systemd-creds](https://github.com/systemd/systemd/blob/main/man/systemd-cre
 are candidates for separating keys from encrypted templates, optionally using a
 TPM. Deployment needs verified measured-boot policy, upgrade/recovery behavior and
 relevant systemd-version testing. Sealing a key does not protect a running
-compromised OS or attest a camera/PAD path. TPM support is not implemented.
+compromised OS or attest a camera/PAD path. Optional [TPM key wrapping](tpm.md) is implemented using systemd-creds; measured-boot and recovery qualification remain open.
 
 ## Evidence still required
 

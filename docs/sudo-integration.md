@@ -142,3 +142,10 @@ presentation attacks remain unvalidated.
 A separate explicit [`kde-pam` opt-in](kde-login.md) can now reuse the same protected
 reference for KDE display-manager login and Win + L unlocking. It has independent per-service/account
 markers and PAM activation; enabling sudo alone never enables graphical login.
+
+## Optional hardware key protection
+
+An existing imported profile can explicitly migrate its key to a local TPM without
+changing its face samples or thresholds. See [TPM key protection](tpm.md) for
+commands, enforcing SELinux checks, recovery and limitations. The normal legacy
+key remains supported for profiles that have not migrated.

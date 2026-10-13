@@ -17,6 +17,36 @@ Current usage and activation are in [scope](index.md), [inference](inference.md)
 [sudo](sudo-integration.md) and [KDE](kde-login.md). This document preserves evidence;
 it is not the installation guide.
 
+## TPM implementation — 2026-10-13
+
+Added optional Rust integration with systemd 259.9's TPM-only encrypted credentials.
+Ordinary helper tests: 3 passed, 1 hardware test ignored by default. Formatting,
+feature Clippy with warnings denied and release helper build passed. Python suite:
+31 passed. Real TPM test explicitly executed in a fresh private mount namespace
+with synthetic templates: migration/unseal, threshold and ciphertext preservation,
+idempotence, malformed template, cross-UID name mismatch, corrupt/broken credential,
+missing device and an eight-second stalled-process timeout passed. No person's
+biometric data is used by the hardware regression.
+
+An initial enforcing `xdm_t` key-only check failed: audit AVCs showed denied
+read/write, followed by open, on `tpm_device_t`. The separate optional policy
+adds precisely those permissions. Subsequent key/template-only checks passed in
+`xdm_t` and with real UID 1000/effective UID root; Enforcing remains active.
+This validates key release contexts, not a live face match, reboot, firmware
+updates, PCR policy, latency distribution or anti-spoofing.
+
+The rebuilt helper and updated setup coordinator were installed atomically on the
+Fedora host. UID 1000's existing key was migrated, the plaintext `key` removed,
+and `key.tpm` is root-owned mode 0600. The current real profile's key and encrypted
+template were then validated in `xdm_t` and with the account's real UID/effective
+root. sudo, PlasmaLogin and KDE unlock opt-ins remain enabled and PAM files were
+not modified. A live face login after this migration and a reboot have not been
+performed by this implementation session.
+
+The owner reports a positive private PAD audit held by an auditor. No report,
+scope, tested version, hardware or methodology was available for review here.
+No PAD qualification flag or biometric threshold was changed on that basis.
+
 ## Documentation consistency review — 2026-10-13
 
 Reviewed all repository Markdown guides against the current feature gates,

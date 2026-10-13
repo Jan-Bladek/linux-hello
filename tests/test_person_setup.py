@@ -35,7 +35,7 @@ class PersonSetup(unittest.TestCase):
             profile = state / '1000'; profile.mkdir()
             pam = root / 'pam'; pam.mkdir()
             (state / '.anchor').write_bytes(b'')
-            old = {profile/'key': b'old-key', profile/'template.lht': b'old-encrypted-face',
+            old = {profile/'key': b'old-key', profile/'key.tpm': b'old-sealed-key', profile/'template.lht': b'old-encrypted-face',
                    profile/'config.json': b'old-config', pam/'sudo': b'old-sudo',
                    pam/'kde': b'old-lock', pam/'plasmalogin': b'old-login',
                    profile/'pam-plasmalogin.enabled': b'old-marker'}
@@ -46,6 +46,7 @@ class PersonSetup(unittest.TestCase):
             def failing(args, secret=None):
                 if 'enroll-stdin' in args:
                     (profile/'key').write_bytes(b'new-key')
+                    (profile/'key.tpm').write_bytes(b'changed-sealed-key')
                     (profile/'template.lht').write_bytes(b'new-face')
                     return
                 (pam/'sudo').write_bytes(b'partial-change')

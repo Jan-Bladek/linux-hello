@@ -49,7 +49,7 @@ trusted camera-to-daemon path.
 | Replayed verification result | Request-scoped deadline, requester unique name, target UID, service binding, one-shot consumption; cancel on disconnect | No verification result/token API exists |
 | Unauthorized enrollment/deletion | Explicit account scope and administrator authorization for root import; private storage | Local-only GUI edits affect its own reference; unified setup requires pkexec authorization and root live verification |
 | Privilege escalation from GUI/model/parser | GUI unprivileged; no shell evaluation of inputs; privileged surface minimal; model worker isolated | GUI has no system authority; fixed root verifier and self-only setuid launcher are privileged surfaces |
-| Template theft | AEAD, authenticated metadata, private files, separation of key from data, no template export | GUI passphrase-derived key; separate root-only PAM key/template; no TPM or offline key separation |
+| Template theft | AEAD, authenticated metadata, private files, separation of key from data, no template export | GUI passphrase-derived key; separate root-only PAM key/template; optional explicit TPM wrapping; legacy profiles retain colocated keys |
 | Symlink/hardlink/path traversal race | Trusted parent directory, ownership/mode checks, nofollow descriptor access, exclusive creation, atomic writes | Storage safeguards require review; never use a writable shared directory |
 | Crash during write/delete | Atomic replacement and fsync; versioned records; no successful enrollment before durability | Atomic encrypted persistence and regression tests; no SSD secure-erasure claim |
 | Device substitution / hot unplug | Record descriptor identity, reject unexpected formats, timeout and release, re-probe after reconnect | Camera errors reject; descriptor binding is not cryptographic substitution resistance |
@@ -57,7 +57,7 @@ trusted camera-to-daemon path.
 | Sensitive logs or crash dumps | Never log images, embeddings, secrets, matching payloads; disable core dumps in service | Sanitized diagnostics only; user-controlled debugger remains outside boundary |
 | PAM control-flag error | VM tests of every supported stack, negative cases and password recovery before opt-in | Explicit service-specific activation and rollback; automatic/RPM activation absent; broad VM matrix still pending |
 | Malicious model/library update | Pin versions/checksums; verify license and provenance; audit runtime and full dependency tree | Explicit downloader verifies pins; no weights bundled; root verifier refuses user-selected models |
-| Offline disk attack | Independent key protection and validated measured-boot policy if TPM used | TPM protection not implemented; encryption alone with colocated key is insufficient |
+| Offline disk attack | Independent key protection and validated measured-boot policy if TPM used | [Optional TPM wrapping](tpm.md) separates keys from a copied disk; no boot-state policy; legacy colocated keys remain insufficient |
 | False security indicator | Capability states derive from actual functionality; unavailable is never green/enabled | Required invariant for GUI, CLI and D-Bus |
 
 ## Future authenticated IPC protocol requirements

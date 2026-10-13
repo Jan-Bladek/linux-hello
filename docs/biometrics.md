@@ -129,7 +129,7 @@ across backups needs per-enrollment key rotation plus a trusted generation count
 The generic API receives keys in memory. Optional GUI diagnostic persistence
 derives a key from a separate user-entered reference passphrase using Argon2id;
 the GUI stores no plaintext key file. The separate PAM profile uses a random
-root-owned key file, not the GUI passphrase or a daemon/TPM key service. See
+root-owned key file or explicitly migrated [TPM credential](tpm.md), not the GUI passphrase or a daemon key service. See
 [inference diagnostics](inference.md#multi-sample-encrypted-diagnostic-reference)
 for format, parameters and limitations. Diagnostic security-readiness flags remain false; protected administrator import
 exists for experimental PAM, while independent storage/key qualification remains open. Windows
@@ -138,10 +138,10 @@ Zeroization reduces residual memory; it does not provide locked pages, swap excl
 or protection against a compromised process/root. Set service core dump limits and
 evaluate mlock/protected workers as part of the later deployment review.
 
-TPM 2.0 sealed keys could protect a wrapping key against some offline theft. A future
-design must review PCR policy, measured boot, updates, recovery and key rotation,
-and distinguish key release from trustworthy live camera capture. No hardware-backed
-authentication or TPM storage is implemented or advertised.
+Optional [TPM key wrapping](tpm.md) protects the PAM key against copying the disk
+without the original TPM. It has no PCR policy or boot-state attestation. Measured
+boot, updates, recovery and key rotation require qualification; key release does
+not establish trustworthy live camera capture or PAD.
 
 ## Required evaluation before a security-qualified release
 

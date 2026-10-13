@@ -36,6 +36,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 - [Installation](installation.md): default builds, diagnostics/RPMs and links to optional integrations.
 - [Inference](inference.md): exact model hashes, preprocessing, quality, lifecycle and GUI usage.
 - [Sudo integration](sudo-integration.md): protected provisioning, authentication, diagnostics and rollback.
+- [Optional TPM protection](tpm.md): root profile key wrapping, explicit migration, limits and hardware tests.
 - [KDE integration](kde-login.md): display-manager login and Win + L, each with separate activation.
 - [Architecture](architecture.md) and [authentication flow](authentication-flow.md): implemented authority and data paths.
 - [Biometrics](biometrics.md) and [threat model](threat-model.md): template handling, security controls and remaining qualification.
