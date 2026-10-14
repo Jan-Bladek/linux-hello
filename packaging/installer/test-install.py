@@ -26,6 +26,8 @@ def main():
     assert 'linuxhello_kde' in modules and 'linuxhello_tpm' in modules, 'Test requires existing policies; never installs policies in the caller namespace'
     contexts = subprocess.check_output(['/usr/sbin/semanage', 'fcontext', '-l', '-C'], text=True)
     assert any(line.split() and line.split()[0] == str(BASE / 'kde-pam-probe') and ':xdm_exec_t:' in line for line in contexts.splitlines())
+    # Keep only known installed public policy packages in the empty file fixture.
+    policies = {name:(BASE / name).read_bytes() for name in ('linuxhello_kde.pp','linuxhello_tpm.pp')}
     os.umask(0o077)
     with tempfile.TemporaryDirectory(dir='/run', prefix='hello-install-test-') as tmp:
         mounted = []
@@ -35,6 +37,14 @@ def main():
                 assert target.is_dir() and not target.is_symlink()
                 fixture = Path(tmp) / str(index); fixture.mkdir(mode=0o700 if target == STATE else 0o755)
                 subprocess.run(['/usr/bin/mount', '--bind', str(fixture), str(target)], check=True); mounted.append(target)
+            for name, data in policies.items(): (BASE / name).write_bytes(data)
+            # Reject a fixture that would change the host's global policy store.
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('policy_check', REPO / 'packaging/installer/install-root.py')
+            installer=importlib.util.module_from_spec(spec);spec.loader.exec_module(installer)
+            for name in policies:
+                candidate=Path(sys.argv[1])/name
+                if candidate.exists(): assert candidate.read_bytes()==installer.loaded_policy(name[:-3]), 'Test stage would change global SELinux policy'
             subprocess.run([sys.executable, '-B', str(REPO / 'packaging/installer/install-root.py'), sys.argv[1]], check=True)
             for name in ['hello', 'hello-settings', 'hello-face-worker', 'hello-sudo', 'hello-lock-verify', 'kde-pam-probe']:
                 path = BASE / name

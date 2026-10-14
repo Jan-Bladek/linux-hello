@@ -81,12 +81,16 @@ pub fn manage(action: &str) -> Result<Status, String> {
         .map_err(
             |_| "Cannot start account authorization; check the full installation and Polkit agent",
         )?;
+    let start = Instant::now();
+    let deadline = start + Duration::from_secs(120);
     let stdout = child.stdout.take().ok_or("Missing account response pipe")?;
     let reader = thread::spawn(move || {
         let mut bytes = Vec::new();
-        stdout.take(4097).read_to_end(&mut bytes).map(|_| bytes)
+        crate::process_io::DeadlineIo::new(stdout, deadline)?
+            .take(4097)
+            .read_to_end(&mut bytes)
+            .map(|_| bytes)
     });
-    let start = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),

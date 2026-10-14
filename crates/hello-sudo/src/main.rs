@@ -19,7 +19,16 @@ use std::{
 };
 use zeroize::Zeroizing;
 type Error = Box<dyn std::error::Error + Send + Sync>;
+mod coordination;
+mod policy;
+mod profile;
 mod tpm;
+use coordination::{
+    AttemptLease, activation_allowed, bump_epoch, profile_snapshot, read_lock, setup_lock,
+};
+#[cfg(test)]
+use profile::write_private;
+use profile::{ProfileWriteGuard, recover_profile};
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
@@ -63,6 +72,10 @@ fn key(uid: u32) -> Result<hello_storage::SecretKey, Error> {
     Ok(hello_storage::SecretKey::from_bytes(*bytes))
 }
 fn load(uid: u32) -> Result<(Config, hello_face::Template), Error> {
+    match fs::symlink_metadata(directory(uid).join(".profile-update")) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+        _ => return Err("Interrupted profile update; administrator recovery required".into()),
+    }
     let config: Config = serde_json::from_reader(protected_file(
         &directory(uid).join("config.json"),
         true,
@@ -73,10 +86,37 @@ fn load(uid: u32) -> Result<(Config, hello_face::Template), Error> {
     let template = store.load()?.ok_or("No protected template")?;
     Ok((config, template))
 }
-async fn verify(uid: u32, cancel: Arc<AtomicBool>, diagnostic: bool) -> Result<(), Error> {
+async fn verify(
+    uid: u32,
+    cancel: Arc<AtomicBool>,
+    diagnostic: bool,
+    service: Option<&str>,
+) -> Result<(), Error> {
+    let _budget = AttemptLease::acquire()?;
+    let read = read_lock()?;
+    policy::check(service)?;
+    activation_allowed(uid, service)?;
+    let snapshot = profile_snapshot(uid)?;
     let (config, template) = load(uid)?;
+    drop(read);
+    verify_template(config, template, cancel, diagnostic).await?;
+    let _read = read_lock()?;
+    policy::check(service)?;
+    activation_allowed(uid, service)?;
+    if profile_snapshot(uid)? != snapshot {
+        return Err("Protected reference changed during verification".into());
+    }
+    Ok(())
+}
+async fn verify_template(
+    config: Config,
+    template: hello_face::Template,
+    cancel: Arc<AtomicBool>,
+    diagnostic: bool,
+) -> Result<hello_face::Template, Error> {
     let reference = SessionReference::from_template(template)?;
     reference.validate_strict_recognition(&config.identity, true)?;
+    let reference = Mutex::new(reference);
     // Immutable installed sibling binary and exact pinned model files only.
     let executable = Path::new(boundary::HELPER).with_file_name("hello-face-worker");
     protected_file(&executable, false, 100_000_000)?;
@@ -98,7 +138,7 @@ async fn verify(uid: u32, cancel: Arc<AtomicBool>, diagnostic: bool) -> Result<(
     .await?;
     let capture = Arc::new(tokio::sync::Mutex::new(&mut capture));
     let result = verify_person_observed(
-        &Mutex::new(reference),
+        &reference,
         &config.identity,
         true,
         &cancel,
@@ -136,8 +176,12 @@ async fn verify(uid: u32, cancel: Arc<AtomicBool>, diagnostic: bool) -> Result<(
     {
         return Err("Face did not match; use password authentication".into());
     }
-    Ok(())
+    reference
+        .into_inner()
+        .map_err(|_| "Reference mutex poisoned")?
+        .into_template()
 }
+
 struct EchoGuard {
     fd: i32,
     original: libc::termios,
@@ -168,8 +212,12 @@ fn passphrase(cancel: &AtomicBool) -> Result<Zeroizing<Vec<u8>>, Error> {
         original,
     };
     tty.write_all(b"GUI reference passphrase (not your sudo password): ")?;
-    let mut password = Zeroizing::new(Vec::new());
+    let mut password = Zeroizing::new(Vec::with_capacity(1024));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     loop {
+        if std::time::Instant::now() >= deadline {
+            return Err("Passphrase entry timed out".into());
+        }
         if cancel.load(Ordering::Acquire) {
             return Err("Enrollment cancelled".into());
         }
@@ -203,14 +251,22 @@ fn passphrase(cancel: &AtomicBool) -> Result<Zeroizing<Vec<u8>>, Error> {
     tty.write_all(b"\n")?;
     Ok(password)
 }
-fn enroll(name: &str, cancel: &AtomicBool) -> Result<u32, Error> {
+async fn enroll(name: &str, cancel: Arc<AtomicBool>) -> Result<u32, Error> {
     if boundary::account(name)?.0 < 1000 {
         return Err("System/root accounts cannot be enrolled".into());
     }
-    let password = passphrase(cancel)?;
-    import_reference(name, None, &password)
+    let password = passphrase(&cancel)?;
+    import_reference(name, None, &password, cancel).await
 }
-fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Result<u32, Error> {
+async fn import_reference(
+    name: &str,
+    source: Option<&Path>,
+    password: &[u8],
+    cancel: Arc<AtomicBool>,
+) -> Result<u32, Error> {
+    let _lock = setup_lock()?;
+    bump_epoch()?;
+    let _budget = AttemptLease::acquire()?;
     let (uid, _, home) = boundary::account(name)?;
     if uid < 1000 {
         return Err("System/root accounts cannot be enrolled".into());
@@ -251,6 +307,32 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0.80,
         Err(error) => return Err(error.into()),
     };
+    let config = Config {
+        version: 1,
+        uid,
+        device: device.path.clone(),
+        identity: device.identity.clone(),
+        threshold,
+        experimental_without_validated_pad: true,
+    };
+    config.validate(uid)?;
+    let template = verify_template(config, template, cancel.clone(), true).await?;
+    if cancel.load(Ordering::Acquire) {
+        return Err("Enrollment cancelled".into());
+    }
+    // Verification and fallible camera/emitter cleanup complete before any active bytes change.
+    let config = Config {
+        version: 1,
+        uid,
+        device: device.path.clone(),
+        identity: device.identity.clone(),
+        threshold,
+        experimental_without_validated_pad: true,
+    };
+    if fs::symlink_metadata(dir.join(".config-pending")).is_ok() {
+        return Err("Pending profile update requires administrator recovery".into());
+    }
+    let rollback = ProfileWriteGuard::new(&dir)?;
     protected_path(&dir.join("key"))?;
     let keypath = dir.join("key");
     let has_tpm = match fs::symlink_metadata(dir.join("key.tpm")) {
@@ -272,15 +354,6 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
     }
     let store = hello_storage::SecureStore::open(&dir, uid, key(uid)?)?;
     store.save(&template)?;
-    let config = Config {
-        version: 1,
-        uid,
-        device: device.path.clone(),
-        identity: device.identity.clone(),
-        threshold,
-        experimental_without_validated_pad: true,
-    };
-    config.validate(uid)?;
     let pending = dir.join(".config-pending");
     let mut file = OpenOptions::new()
         .write(true)
@@ -292,9 +365,11 @@ fn import_reference(name: &str, source: Option<&Path>, password: &[u8]) -> Resul
     file.sync_all()?;
     fs::rename(&pending, dir.join("config.json"))?;
     std::fs::File::open(&dir)?.sync_all()?;
-    eprintln!(
-        "Sudo reference saved. Look straight at the camera for verification before PAM activation."
-    );
+    if cancel.load(Ordering::Acquire) {
+        return Err("Enrollment cancelled before commit".into());
+    }
+    rollback.commit()?;
+    eprintln!("Protected reference saved after live verification and camera cleanup.");
     Ok(uid)
 }
 fn framed_password(mut input: impl Read) -> Result<Zeroizing<Vec<u8>>, Error> {
@@ -369,19 +444,25 @@ async fn run() -> Result<(), Error> {
     }
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let result = match args.as_slice() {
-        [command, uid] if command == "verify" => verify(uid.parse()?, cancel, false).await,
+        [command, uid] if command == "verify" => verify(uid.parse()?, cancel, false, None).await,
+        [command, uid, service] if command == "verify-service" || command == "diagnose-service" =>
+            verify(uid.parse()?, cancel, command == "diagnose-service", Some(service)).await,
+        [command, uid] if command == "validate" => {
+            let (config, template) = load(uid.parse()?)?;
+            let reference = SessionReference::from_template(template)?;
+            reference.validate_strict_recognition(&config.identity, true)?;
+            hello_face::opencv_engine::PinnedModels::read(Path::new(boundary::MODELS))?;
+            Ok(())
+        },
         [command, name] if command == "enroll" => {
-            let uid = enroll(name, &cancel)?;
-            verify(uid, cancel, true).await
+            enroll(name, cancel).await.map(|_| ())
         }
         [command, name, source] if command == "enroll-stdin" => {
             // Root-authorized GUI setup only. Secret arrives on a bounded private
             // pipe, never argv/environment/file. Source import still enforces UID
             // ownership, private files, no symlinks and encrypted account binding.
-            let password = framed_password(std::io::stdin().lock())?;
-            let uid = import_reference(name, Some(Path::new(source)), &password)?;
-            drop(password);
-            verify(uid, cancel, false).await
+            let password = framed_password(hello_cli::process_io::DeadlineIo::new(std::io::stdin(), std::time::Instant::now()+std::time::Duration::from_secs(15))?)?;
+            import_reference(name, Some(Path::new(source)), &password, cancel).await.map(|_| ())
         }
         [command, uid] if command == "tpm-status" => {
             let uid = uid.parse()?;
@@ -394,10 +475,11 @@ async fn run() -> Result<(), Error> {
             }
             Ok(())
         }
-        [command, uid] if command == "tpm-enable" => tpm::enable(uid.parse()?),
-        [command, uid] if command == "diagnose" => verify(uid.parse()?, cancel, true).await,
+        [command, uid] if command == "recover" => { let _lock=setup_lock()?; recover_profile(uid.parse()?) },
+        [command, uid] if command == "tpm-enable" => { let _lock = setup_lock()?; tpm::enable(uid.parse()?) },
+        [command, uid] if command == "diagnose" => verify(uid.parse()?, cancel, true, None).await,
         _ => {
-            Err("Usage: hello-sudo enroll USER | verify UID | diagnose UID | tpm-enable UID | tpm-status UID".into())
+            Err("Usage: hello-sudo enroll USER | verify UID | diagnose UID | tpm-enable UID | tpm-status UID | recover UID".into())
         }
     };
     watcher.abort();
@@ -406,6 +488,67 @@ async fn run() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "root in a private namespace with synthetic audit marker required"]
+    fn interrupted_publication_recovers_only_previous_synthetic_profile() {
+        assert_ne!(
+            fs::read_link("/proc/self/ns/mnt").unwrap(),
+            fs::read_link("/proc/1/ns/mnt").unwrap()
+        );
+        assert_eq!(
+            fs::read(Path::new(boundary::ROOT).join(".audit-test-only")).unwrap(),
+            b"synthetic-only\n"
+        );
+        let dir = directory(1000);
+        fs::create_dir(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        write_private(&dir.join("template.lht"), b"old-encrypted-fixture").unwrap();
+        write_private(&dir.join("config.json"), b"old-config-fixture").unwrap();
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        fs::write(dir.join("template.lht"), b"new-encrypted-fixture").unwrap();
+        fs::write(dir.join("config.json"), b"new-config-fixture").unwrap();
+        write_private(&dir.join("key"), &[7; 32]).unwrap();
+        std::mem::forget(guard); // simulate abrupt exit without Drop
+        assert!(
+            load(1000)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("Interrupted profile update")
+        );
+        recover_profile(1000).unwrap();
+        assert_eq!(
+            fs::read(dir.join("template.lht")).unwrap(),
+            b"old-encrypted-fixture"
+        );
+        assert_eq!(
+            fs::read(dir.join("config.json")).unwrap(),
+            b"old-config-fixture"
+        );
+        assert!(!dir.join("key").exists());
+        assert!(!dir.join(".profile-update").exists());
+        {
+            let _guard = ProfileWriteGuard::new(&dir).unwrap();
+            fs::write(dir.join("template.lht"), b"failed-write-fixture").unwrap();
+        }
+        assert_eq!(
+            fs::read(dir.join("template.lht")).unwrap(),
+            b"old-encrypted-fixture"
+        );
+        assert!(!dir.join(".profile-update").exists());
+        write_private(&dir.join("key"), &[9; 32]).unwrap();
+        let before = profile_snapshot(1000).unwrap();
+        bump_epoch().unwrap();
+        let after = profile_snapshot(1000).unwrap();
+        assert_ne!(&*before, &*after);
+        bump_epoch().unwrap();
+        assert_ne!(&*after, &*profile_snapshot(1000).unwrap());
+        assert!(activation_allowed(1000, Some("sudo")).is_ok());
+        write_private(&dir.join("pam-sudo.disabled"), b"disabled").unwrap();
+        assert!(activation_allowed(1000, Some("sudo")).is_err());
+        assert!(activation_allowed(1000, Some("kde")).is_err());
+    }
+
     #[test]
     fn private_import_pipe_rejects_oversize_truncation_and_extra_input() {
         let mut frame = 12_u16.to_be_bytes().to_vec();

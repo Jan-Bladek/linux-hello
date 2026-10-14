@@ -11,6 +11,8 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('person_setup', Path(__file__).parents[1] / 'packaging/kde/configure-person.py')
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+helper_spec = importlib.util.spec_from_file_location('audit_recovery', Path(__file__).parents[1] / 'packaging/sudo/manage.py')
+recovery = importlib.util.module_from_spec(helper_spec); helper_spec.loader.exec_module(recovery)
 
 
 class PersonSetup(unittest.TestCase):
@@ -41,7 +43,7 @@ class PersonSetup(unittest.TestCase):
                    profile/'pam-plasmalogin.enabled': b'old-marker'}
             for path, contents in old.items(): path.write_bytes(contents)
             def atomic(path, data, mode): path.write_bytes(data)
-            sudo = SimpleNamespace(ROOT=state, PAM=pam/'sudo', protected=lambda path, private=False: path.stat(), atomic_write=atomic)
+            sudo = SimpleNamespace(bump_epoch=lambda:None,ROOT=state, PAM=pam/'sudo', protected=lambda path, private=False: path.stat(), atomic_write=atomic, restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,atomic))
             kde = SimpleNamespace(SUBSTACK='linuxhello-kde-auth', SERVICES=('plasmalogin','sddm'), detect=lambda:'plasmalogin')
             def failing(args, secret=None):
                 if 'enroll-stdin' in args:
@@ -62,7 +64,7 @@ class PersonSetup(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);state=root/'state';state.mkdir();pam=root/'pam';pam.mkdir()
             (state/'.anchor').write_bytes(b'');(pam/'sudo').write_bytes(b'other-users-still-enabled')
-            sudo=SimpleNamespace(ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),atomic_write=lambda p,d,mode:p.write_bytes(d))
+            sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),atomic_write=lambda p,d,mode:p.write_bytes(d),restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,lambda p,b,mode:p.write_bytes(b)))
             kde=SimpleNamespace(SUBSTACK='linuxhello-kde-auth',SERVICES=('plasmalogin','sddm'))
             calls=[]
             with patch.object(m,'PAM_DIR',pam),patch.object(m,'profile_is_private',return_value=True),patch.object(m,'command',side_effect=lambda args,secret=None:calls.append(args)),patch.object(m,'progress'),patch.object(m,'complete'):

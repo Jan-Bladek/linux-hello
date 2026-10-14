@@ -416,7 +416,7 @@ fn configure_face_check(
         }
         if action.is_recognition() {
             ui.set_recognition_state(5);
-            ui.set_recognition_title("Sprawdzam twarz…".into());
+            ui.set_recognition_title("Checking your face…".into());
         }
         let cancel = cancel.clone();
         let weak = weak.clone();
@@ -457,7 +457,9 @@ fn configure_face_check(
                 let progress_ui = weak.clone();
                 let mut previous_count = None;
                 let feedback_ui = weak.clone();
-                let result = hello_cli::diagnostics::collect_reference_observed(&reference, &device.identity, ir, &cancel,
+                let (expected_revision, staged) = reference.lock().expect("session reference mutex").stage_enrollment();
+                let staged = std::sync::Mutex::new(staged);
+                let result = hello_cli::diagnostics::collect_reference_observed(&staged, &device.identity, ir, &cancel,
                     |count| {
                         let changed = previous_count != Some(count); previous_count = Some(count);
                         let capture=live.as_ref().expect("live scan session").clone(); let cancel=cancel.clone();
@@ -476,7 +478,11 @@ fn configure_face_check(
                 ).await;
                 let mut capture=live.as_ref().expect("live scan session").lock().await;
                 let cleanup=capture.close().await;let capture_report=capture.report();drop(capture);
-                let result=cleanup.and(result);
+                let success = cleanup.is_ok() && result.is_ok() && !cancel.load(Ordering::Acquire);
+                let commit = reference.lock().expect("session reference mutex").finish_enrollment(
+                    expected_revision, staged.into_inner().expect("staged reference mutex"), success);
+                let result=cleanup.and(result).and(commit);
+                let result = if cancel.load(Ordering::Acquire) { Err("Scan cancelled".into()) } else { result };
                 display_alive.store(false, Ordering::Release);
                 let _ = weak.upgrade_in_event_loop(move |ui| {
                     ui.set_face_check_running(false); ui.set_scan_frame_available(false); ui.set_preview_image(slint::Image::default());
@@ -484,7 +490,7 @@ fn configure_face_check(
                     ui.set_diagnostics(serde_json::to_string_pretty(&capture_report).unwrap().into());
                     ui.set_face_check_message(match result {
                         Ok(_) => "Face scanned. Give it a name, then scan again to verify it.".into(),
-                        Err(error) => format!("Scan stopped: {error}. Accepted samples were kept; you can resume.").into(),
+                        Err(error) => format!("Scan stopped: {error}. The previous face was retained. Incomplete samples can be resumed; a completed failed scan must be repeated.").into(),
                     });
                 });
                 return;

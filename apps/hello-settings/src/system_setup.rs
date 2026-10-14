@@ -27,6 +27,8 @@ pub fn configure(
         return Err("Invalid reference passphrase length.".into());
     }
     let metadata = serde_json::json!({"source":source,"sudo":choices[0],"login":choices[1],"unlock":choices[2]});
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(300);
     let mut child = Command::new("/usr/bin/pkexec")
         .arg(HELPER)
         .stdin(Stdio::piped())
@@ -34,10 +36,12 @@ pub fn configure(
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "Cannot open the system authorization dialog.".to_string())?;
-    let mut input = child
+    let input = child
         .stdin
         .take()
         .ok_or("Private setup channel unavailable.")?;
+    let mut input = hello_cli::process_io::DeadlineIo::new(input, deadline)
+        .map_err(|_| "Cannot configure the setup pipe deadline")?;
     let write_result = (|| -> std::io::Result<()> {
         serde_json::to_writer(&mut input, &metadata)?;
         input.write_all(b"\n")?;
@@ -56,6 +60,9 @@ pub fn configure(
         .take()
         .ok_or("No response from the setup helper.")?;
     let reader = thread::spawn(move || {
+        let Ok(output) = hello_cli::process_io::DeadlineIo::new(output, deadline) else {
+            return (false, "Cannot configure the response deadline".into());
+        };
         let mut reader = BufReader::new(output);
         let mut configured = false;
         let mut message = String::new();
@@ -63,20 +70,28 @@ pub fn configure(
         for _ in 0..64 {
             let mut line = String::new();
             use std::io::Read;
-            if Read::by_ref(&mut reader)
-                .take(4097)
-                .read_line(&mut line)
-                .unwrap_or(0)
-                == 0
-            {
-                break;
+            match Read::by_ref(&mut reader).take(4097).read_line(&mut line) {
+                Ok(0) => return (configured, message),
+                Ok(_) => (),
+                Err(_) => {
+                    return (
+                        false,
+                        "Setup response timed out or failed; refresh account status.".into(),
+                    );
+                }
             }
             if line.len() > 4096 {
-                break;
+                return (false, "Oversized setup response".into());
             }
             let Ok(data) = serde_json::from_str::<serde_json::Value>(&line) else {
-                continue;
+                return (false, "Malformed setup response".into());
             };
+            if data.as_object().is_none_or(|object| {
+                object.len() != 1
+                    || (!object.contains_key("message") && !object.contains_key("configured"))
+            }) {
+                return (false, "Unexpected setup response".into());
+            }
             if let Some(text) = data["message"].as_str() {
                 message = text.chars().take(500).collect();
                 let update = message.clone();
@@ -84,13 +99,16 @@ pub fn configure(
             }
             configured |= configured_choices(&data, choices);
         }
-        (configured, message)
+        (false, "Setup response message budget exceeded".into())
     });
-    let started = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
-            Err(_) => break None,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
             _ => (),
         }
         if started.elapsed() >= Duration::from_secs(300) {

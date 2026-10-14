@@ -199,3 +199,110 @@ pub fn restrict_syscalls() -> io::Result<()> {
         Ok(())
     }
 }
+
+/// Verified model bytes are already in memory. Native parsing must not run as root.
+pub fn drop_privileges() -> io::Result<()> {
+    // SAFETY: getppid is an integer-only process query.
+    let parent = unsafe { libc::getppid() };
+    // SAFETY: credential syscalls take only constants; no shared Rust state is touched.
+    if unsafe { libc::geteuid() } == 0 {
+        // Use the reserved overflow/nobody identity, without NSS or inherited groups.
+        // SAFETY: zero groups allows a null pointer; constant UID/GID are non-root.
+        if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 0, 0, 0, 0) } != 0
+            // SAFETY: zero groups permits a null array pointer.
+            || unsafe { libc::setgroups(0, std::ptr::null()) } != 0
+            // SAFETY: all three group IDs are set to the unprivileged reserved identity.
+            || unsafe { libc::setresgid(65534, 65534, 65534) } != 0
+            // SAFETY: all three user IDs are dropped permanently, before native parsing.
+            || unsafe { libc::setresuid(65534, 65534, 65534) } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    // Changing credentials can reset dumpability; protect the process again.
+    // SAFETY: PR_SET_DUMPABLE takes an integer and no pointers.
+    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // Credential changes clear PDEATHSIG. Rearm it after the permanent drop.
+    // SAFETY: integer-only prctl/getppid commands; no pointers are involved.
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: getppid takes no pointers; check the registration race.
+    if parent == 1 || unsafe { libc::getppid() } != parent {
+        return Err(io::Error::from_raw_os_error(libc::ECHILD));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod audit_tests {
+    #[test]
+    #[ignore = "root, current release worker and installed pinned models required"]
+    fn root_worker_drops_all_credentials_before_real_model_parsing() {
+        // SAFETY: geteuid is an integer-only credential query.
+        assert_eq!(unsafe { libc::geteuid() }, 0);
+        let executable = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("hello-face-worker");
+        let worker = crate::face_worker::Worker::spawn_stream(
+            &executable,
+            std::path::Path::new("/usr/local/libexec/linux-hello-sudo/models"),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .unwrap()
+        .initialize()
+        .unwrap();
+        // READY is emitted only after verified bytes, privilege drop, seccomp and
+        // native model construction in the real single-threaded worker executable.
+        let status =
+            std::fs::read_to_string(format!("/proc/{}/status", worker.child.id())).unwrap();
+        for field in ["Uid:", "Gid:"] {
+            let ids = status
+                .lines()
+                .find(|line| line.starts_with(field))
+                .unwrap()
+                .split_whitespace()
+                .skip(1)
+                .collect::<Vec<_>>();
+            assert_eq!(ids, vec!["65534"; 4]);
+        }
+        assert_eq!(
+            status
+                .lines()
+                .find(|line| line.starts_with("Groups:"))
+                .unwrap()
+                .split_whitespace()
+                .count(),
+            1
+        );
+        for field in ["CapPrm:", "CapEff:", "CapAmb:"] {
+            assert_eq!(
+                status
+                    .lines()
+                    .find(|line| line.starts_with(field))
+                    .unwrap()
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap(),
+                "0000000000000000"
+            );
+        }
+        assert_eq!(
+            status
+                .lines()
+                .find(|line| line.starts_with("NoNewPrivs:"))
+                .unwrap()
+                .split_whitespace()
+                .nth(1)
+                .unwrap(),
+            "1"
+        );
+        worker.finish().unwrap();
+    }
+}

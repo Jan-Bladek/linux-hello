@@ -27,8 +27,8 @@ unprivileged sanitized installation health report. GUI, recognition/PAM/setup
 messages, installer, desktop entries and current documentation now use English.
 User labels and stored biometric records are not translated. Earlier UI labels
 in this document are rendered in English for readability; their original milestones
-could predate the language change. [Contributors](../CONTRIBUTORS.md) credits
-OpenAI Codex explicitly as AI assistance, not a separate GitHub user.
+could predate the language change. The README credits OpenAI Codex explicitly as AI assistance, not a separate
+GitHub user.
 
 Default workspace tests/Clippy and optional GUI/CLI/PAM/helper tests/Clippy passed.
 The optional CLI library has 72 passing tests (1 restricted-child entry ignored

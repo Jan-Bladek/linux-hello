@@ -84,3 +84,14 @@ class InstallerTests(unittest.TestCase):
     def test_dry_run_invokes_no_external_commands(self):
         with patch.object(installer, 'run', side_effect=AssertionError('side effect')), patch.object(installer, 'fedora', return_value={'ID':'fedora'}), patch.object(installer.os, 'geteuid', return_value=1000), patch('sys.argv', ['install.py', '--dry-run', '--with-tpm']):
             installer.main()
+
+    def test_loaded_policy_contents_are_checked_and_admin_overrides_refused(self):
+        with patch.object(root,'loaded_policy',return_value=b'old-reviewed'):
+            changes=root.checked_policies({'linuxhello_kde.pp':b'new'}, {'linuxhello_kde'},
+                {root.BASE/'linuxhello_kde.pp':(b'old-reviewed',0o644)})
+            self.assertEqual(changes,[('linuxhello_kde',b'old-reviewed')])
+            with self.assertRaisesRegex(RuntimeError,'administrator override'):
+                root.checked_policies({'linuxhello_kde.pp':b'new'}, {'linuxhello_kde'},
+                    {root.BASE/'linuxhello_kde.pp':(b'different',0o644)})
+        with patch.object(root,'loaded_policy',return_value=b'new'):
+            self.assertEqual(root.checked_policies({'linuxhello_kde.pp':b'new'}, {'linuxhello_kde'}, {}),[])

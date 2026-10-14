@@ -14,7 +14,7 @@ required-features = ["sudo-face"]
 sudo-face = ["dep:hello-cli", "dep:hello-camera", "dep:hello-face", "dep:hello-storage", "dep:hello-pam", "dep:serde", "dep:serde_json", "dep:tokio", "dep:libc", "dep:zeroize", "dep:getrandom"]
 
 [dependencies]
-hello-cli = { path = "../hello-cli", features = ["face-opencv"], optional = true }
+hello-cli = { version = "=0.1.0-dev", path = "../hello-cli", features = ["face-opencv"], optional = true }
 hello-camera = { workspace = true, optional = true }
 hello-face = { workspace = true, optional = true }
 hello-storage = { workspace = true, optional = true }

@@ -1,6 +1,9 @@
 #!/usr/bin/python3
 """Root-only sudo PAM opt-in/rollback. Does not edit authselect/system-auth."""
 import argparse
+import contextlib
+import fcntl
+import signal
 import hashlib
 import os
 from pathlib import Path
@@ -12,7 +15,9 @@ PAM = Path('/etc/pam.d/sudo')
 ROOT = Path('/var/lib/linux-hello/sudo')
 HELPER = '/usr/local/libexec/linux-hello-sudo/hello-sudo'
 MARKER = '# Linux Hello sudo-only experimental integration\n'
-LINE = 'auth       sufficient   /usr/lib64/security/pam_linuxhello.so\n'
+LEGACY_LINE = 'auth       sufficient   /usr/lib64/security/pam_linuxhello.so\n'
+PREAUTH = 'auth required pam_env.so\nauth required pam_faildelay.so delay=2000000\n'
+LINE = PREAUTH + LEGACY_LINE
 
 def protected(path, private=False):
     path = Path(path)
@@ -27,6 +32,8 @@ def protected(path, private=False):
     return m
 
 def changed(original, enable):
+    if MARKER + LEGACY_LINE in original:
+        original = original.replace(MARKER + LEGACY_LINE, MARKER + LINE, 1)
     # Strict paired markers: refuse malformed/hand-edited integration blocks.
     if original.count(MARKER) != original.count(LINE) or original.count(MARKER) > 1:
         raise RuntimeError('Unexpected existing Linux Hello PAM entries')
@@ -40,6 +47,9 @@ def changed(original, enable):
     expected = [i for i, s in enumerate(lines) if s.split() == ['auth', 'include', 'system-auth']]
     if len(expected) != 1:
         raise RuntimeError('Unsupported sudo PAM stack; review manually')
+    auth = [line.split() for line in lines if line.split() and line.split()[0].lstrip('-') == 'auth']
+    if auth != [['auth', 'include', 'system-auth']]:
+        raise RuntimeError('Unsupported sudo auth policy; additional controls require manual review')
     lines.insert(expected[0], MARKER + LINE)
     return ''.join(lines)
 
@@ -58,6 +68,143 @@ def atomic_write(path, data, mode):
     finally:
         if os.path.exists(name): os.unlink(name)
 
+def auth_lines(text):
+    return [' '.join(line.split()) for line in text.splitlines()
+            if line.split() and line.split()[0].lstrip('-') == 'auth']
+
+
+def supported_password_policy(text):
+    """Only the explicitly reviewed local Fedora factor policy is supported.
+    Unknown modules/options/includes (including MFA/faillock) are refused.
+    """
+    lines = auth_lines(text)
+    allowed = [
+        ['auth required pam_env.so', 'auth required pam_faildelay.so delay=2000000',
+         'auth sufficient pam_unix.so nullok', 'auth required pam_deny.so'],
+        ['auth required pam_env.so', 'auth required pam_faildelay.so delay=2000000',
+         'auth sufficient pam_fprintd.so', 'auth sufficient pam_unix.so nullok',
+         'auth required pam_deny.so'],
+    ]
+    if lines not in allowed:
+        raise RuntimeError('Unsupported password auth policy: MFA/access/lockout controls require a reviewed integration')
+
+
+def check_password_policy(service):
+    path = Path('/etc/pam.d') / service
+    if not path.exists(): path = Path('/usr/lib/pam.d') / service
+    path = path.resolve(strict=True)
+    meta = protected(path)
+    if meta.st_size > 16384: raise RuntimeError('Password policy exceeds size limit')
+    data = path.read_bytes()
+    supported_password_policy(data.decode('utf-8'))
+    return path, data
+
+
+@contextlib.contextmanager
+def setup_lock():
+    """Direct and nested managers use the same validated open file description."""
+    path = ROOT / '.setup.lock'
+    protected(ROOT / '.anchor', True)
+    inherited = os.environ.get('LINUX_HELLO_SETUP_LOCK_FD')
+    if inherited is not None:
+        fd = os.dup(int(inherited))
+    else:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(fd, 'rb') as lock:
+        meta = protected(path, True)
+        opened = os.fstat(lock.fileno())
+        if (meta.st_dev, meta.st_ino) != (opened.st_dev, opened.st_ino):
+            raise RuntimeError('Invalid setup lock descriptor')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        previous = os.environ.get('LINUX_HELLO_SETUP_LOCK_FD')
+        os.environ['LINUX_HELLO_SETUP_LOCK_FD'] = str(lock.fileno())
+        try: yield lock
+        finally:
+            if previous is None: os.environ.pop('LINUX_HELLO_SETUP_LOCK_FD', None)
+            else: os.environ['LINUX_HELLO_SETUP_LOCK_FD'] = previous
+
+
+def child_lock_options():
+    raw = os.environ.get('LINUX_HELLO_SETUP_LOCK_FD')
+    return {} if raw is None else {'pass_fds': (int(raw),)}
+
+
+def child_environment():
+    result = {'LANG': 'C.UTF-8'}
+    raw = os.environ.get('LINUX_HELLO_SETUP_LOCK_FD')
+    if raw is not None: result['LINUX_HELLO_SETUP_LOCK_FD'] = raw
+    return result
+
+
+@contextlib.contextmanager
+def write_transaction():
+    """Rollback every managed write, without overwriting concurrent admin edits.
+    This handles exceptions/signals, not SIGKILL or power loss.
+    """
+    before = {}; expected = {}; original_write = atomic_write
+    def write(path, data, mode):
+        path = Path(path)
+        if path == ROOT / '.auth-epoch': return original_write(path,data,mode)
+        if not (path.parent == ROOT or (path.parent.parent == ROOT and path.parent.name.isdecimal())
+                or path.parent == Path('/etc/pam.d')):
+            return original_write(path, data, mode)
+        if path not in before:
+            if path.exists() or path.is_symlink():
+                meta = protected(path)
+                if meta.st_size > 8 * 1024 * 1024: raise RuntimeError('Snapshot exceeds limit')
+                before[path] = (path.read_bytes(), stat.S_IMODE(meta.st_mode))
+            else: before[path] = None
+        expected[path] = data
+        original_write(path, data, mode)
+    globals()['atomic_write'] = write
+    try: yield
+    except BaseException as original_error:
+        failures = []
+        handlers = {sig: signal.signal(sig, signal.SIG_IGN)
+                    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM)}
+        try:
+            for path, snapshot in reversed(list(before.items())):
+                try:
+                    if path.exists() and path.read_bytes() != expected[path]:
+                        if snapshot is not None and path.read_bytes() == snapshot[0]: continue
+                        raise RuntimeError('Administrator changed a managed file during rollback')
+                    if snapshot is None: path.unlink(missing_ok=True)
+                    else: original_write(path, snapshot[0], snapshot[1])
+                    if path.exists(): subprocess.run(['/usr/sbin/restorecon', str(path)], check=True)
+                except BaseException as error: failures.append(error)
+        finally:
+            for sig, handler in handlers.items(): signal.signal(sig, handler)
+        if failures: raise RuntimeError('Rollback incomplete; use password authentication and review managed files') from original_error
+        raise
+    finally: globals()['atomic_write'] = original_write
+
+
+def bump_epoch():
+    path = ROOT / '.auth-epoch'
+    if path.exists() or path.is_symlink(): protected(path, True)
+    atomic_write(path, os.urandom(32), 0o600)
+
+
+def restore_snapshots(snapshots, write=None):
+    """Attempt every recovery step, even if one file or restorecon fails."""
+    write = write or atomic_write
+    failures = []
+    handlers = {sig: signal.signal(sig, signal.SIG_IGN)
+                for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM)}
+    try:
+        for path, before in snapshots.items():
+            try:
+                if before is None: path.unlink(missing_ok=True)
+                else: write(path, before[0], before[1])
+            except BaseException as error: failures.append(error)
+            try:
+                if path.exists(): subprocess.run(['/usr/sbin/restorecon', str(path)], check=True)
+            except BaseException as error: failures.append(error)
+    finally:
+        for sig, handler in handlers.items(): signal.signal(sig, handler)
+    if failures: raise RuntimeError('Rollback incomplete; use password authentication and review managed files')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['enable', 'disable', 'status'])
@@ -70,13 +217,16 @@ def main():
     if args.action == 'status':
         print('enabled' if MARKER + LINE in text else 'disabled')
         return
+    bump_epoch()
+    policy = check_password_policy('system-auth') if args.action == 'enable' else None
     if args.action == 'enable':
         if args.uid is None or args.uid < 1000: parser.error('--uid must identify an enrolled normal user')
         protected(HELPER)
         protected('/usr/lib64/security/pam_linuxhello.so')
         protected(ROOT / str(args.uid) / 'config.json', True)
         print('Look straight at the camera: checking the reference before enabling sudo.', flush=True)
-        subprocess.run([HELPER, 'diagnose', str(args.uid)], check=True, timeout=40, env={'LANG':'C.UTF-8'})
+        subprocess.run([HELPER, 'diagnose', str(args.uid)], check=True, timeout=40, env=child_environment(), **child_lock_options())
+    if policy and policy[0].read_bytes() != policy[1]: raise RuntimeError('Password policy changed during verification')
     updated = changed(text, args.action == 'enable').encode()
     if updated == original:
         print('No changes needed')
@@ -92,4 +242,6 @@ def main():
     print('sudo face authentication ' + args.action + 'd; original password/account/session stack retained')
 
 if __name__ == '__main__':
-    main()
+    if os.geteuid() != 0: raise SystemExit('Run with sudo')
+    with setup_lock(), write_transaction():
+        main()

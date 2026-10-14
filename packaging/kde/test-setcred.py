@@ -10,6 +10,7 @@ import sys
 import tempfile
 import importlib.util
 import ctypes as c
+import shutil
 sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location('kde_management',Path(__file__).with_name('manage-kde.py'))
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
@@ -37,20 +38,20 @@ ROOT=Path('/var/lib/linux-hello/sudo')
 
 def main():
     if os.geteuid()!=0: raise SystemExit('root only')
-    if len(sys.argv)==2:
+    if sys.argv[1:2]!=['--isolated'] and len(sys.argv) in (2,4):
         original=os.readlink('/proc/self/ns/mnt')
-        subprocess.run(['/usr/bin/unshare','--mount','--propagation','private',sys.executable,str(Path(__file__).resolve()),'--isolated',sys.argv[1],original],check=True)
+        subprocess.run(['/usr/bin/unshare','--mount','--propagation','private',sys.executable,str(Path(__file__).resolve()),'--isolated',*sys.argv[1:],original],check=True)
         return
-    if len(sys.argv)!=4 or sys.argv[1]!='--isolated': raise SystemExit('Usage: sudo test-setcred.py USER')
+    if len(sys.argv) not in (4,6) or sys.argv[1]!='--isolated': raise SystemExit('Usage: sudo test-setcred.py USER [CURRENT_PAM_MODULE CURRENT_LOCK_LAUNCHER]')
     # Refuse mounting any fixture over a production path in the caller's namespace.
     current=os.readlink('/proc/self/ns/mnt')
-    if current==sys.argv[3] or current==os.readlink('/proc/1/ns/mnt'):
+    if current==sys.argv[-1] or current==os.readlink('/proc/1/ns/mnt'):
         raise SystemExit('PRIVATE mount namespace required')
     user=sys.argv[2];uid=pwd.getpwnam(user).pw_uid
     if uid<1000: raise SystemExit('Normal account required')
     os.umask(0o077)
     # Everything staged in /run is root-private. No actual templates are copied.
-    with tempfile.TemporaryDirectory(prefix='hello-setcred-',dir='/run') as tmp:
+    with tempfile.TemporaryDirectory(prefix='.hello-setcred-binaries-',dir='/usr/local/libexec') as binfolder, tempfile.TemporaryDirectory(prefix='hello-setcred-',dir='/run') as tmp:
         tmp=Path(tmp);state=tmp/'state';state.mkdir();profile=state/str(uid);profile.mkdir()
         (profile/'config.json').write_text('{}')
         (profile/'pam-plasmalogin.enabled').write_text('linux-hello-login-v1\n')
@@ -58,7 +59,7 @@ def main():
         conf=tmp/'conf';conf.mkdir()
         (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
         fixture=tmp/'fixture.c'
-        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==3&&(!strcmp(v[1],"verify")||!strcmp(v[1],"diagnose"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
+        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==4&&(!strcmp(v[1],"verify-service")||!strcmp(v[1],"diagnose-service"))&&(!strcmp(v[3],"sudo")||!strcmp(v[3],"sudo-i")||!strcmp(v[3],"kde")||!strcmp(v[3],"plasmalogin")||!strcmp(v[3],"sddm"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
         good=tmp/'matched';bad=tmp/'rejected'
         for file,exitcode in [(good,0),(bad,1)]:
             subprocess.run(['/usr/bin/cc','-Wall','-Wextra','-Werror','-O2',f'-DOUTCOME={exitcode}',f'-DEXPECTED_UID="{uid}"','-o',str(file),str(fixture)],check=True)
@@ -74,7 +75,18 @@ def main():
         subprocess.run(['/usr/bin/chcon','-t','var_lib_t',str(tmp)],check=True)
         subprocess.run(['/usr/bin/mount','--bind',str(state),str(ROOT)],check=True)
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(probe),'plasmalogin',user,str(conf)]
+        binary_mounts=[]
         try:
+            if len(sys.argv)==6:
+                # Root-private staging on the normal root filesystem: /run is
+                # nosuid. The actual production files are only overlaid in this
+                # verified private namespace, never truncated or replaced.
+                for source,target,name,mode,label in [
+                    (sys.argv[3],Path('/usr/lib64/security/pam_linuxhello.so'),'pam.so',0o644,'lib_t'),
+                    (sys.argv[4],BASE/'hello-lock-verify','launcher',0o4755,'usr_t')]:
+                    staged=Path(binfolder)/name;shutil.copyfile(source,staged);staged.chmod(mode)
+                    subprocess.run(['/usr/bin/chcon','-t',label,str(staged)],check=True)
+                    subprocess.run(['/usr/bin/mount','--bind',str(staged),str(target)],check=True);binary_mounts.append(target)
             subprocess.run(['/usr/bin/mount','--bind',str(good),str(BASE/'hello-sudo')],check=True)
             (conf/'sudo').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\n')
             assert sudo_authenticate(conf,user)==0,'legacy enrolled own account remains enabled'
@@ -141,5 +153,6 @@ def main():
         finally:
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/umount',str(ROOT)],check=True)
+            for target in reversed(binary_mounts):subprocess.run(['/usr/bin/umount',str(target)],check=True)
     print('PASS: real PAM auth/account/setcred dispatch for simulated match; rejection fails closed. Production namespace unchanged.')
 if __name__=='__main__':main()

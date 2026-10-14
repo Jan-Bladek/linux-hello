@@ -46,7 +46,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("descriptor isolation failed".into());
     }
     let error = Command::new(boundary::HELPER)
-        .args(["verify", &uid.to_string()])
+        .args(["verify-service", &uid.to_string(), "kde"])
         .env_clear()
         .env("LANG", "C.UTF-8")
         .current_dir("/")

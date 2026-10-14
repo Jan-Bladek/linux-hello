@@ -66,4 +66,4 @@ template format, caller privilege, worker protocol or supported PAM service.
 
 User-facing UI, messages and project documentation use English. User-provided names
 remain Unicode-capable and must not be translated or changed during an upgrade.
-See [contributors](CONTRIBUTORS.md) for project and AI-assistance attribution.
+See [project attribution](README.md#contributors) for project and AI-assistance attribution.

@@ -457,6 +457,9 @@ impl Drop for CameraSession {
 #[cfg(any(target_os = "linux", test))]
 trait CameraSource {
     fn next(&mut self, wait: Duration) -> Result<Option<Frame>, CameraError>;
+    fn stop(&mut self) -> Result<(), CameraError> {
+        Ok(())
+    }
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -468,56 +471,65 @@ fn run_capture<S: CameraSource>(
 ) -> Result<(), CameraError> {
     let deadline = Instant::now() + config.timeout;
     let mut source = Some(open(config)?);
-    let mut captured = 0;
-    let mut retries = 0;
-    loop {
-        if cancel.load(Ordering::Acquire) || frames.is_closed() {
-            return Err(CameraError::Cancelled);
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err(CameraError::Timeout);
-        }
-        if source.is_none() {
-            if retries >= config.reconnect_attempts {
-                return Err(CameraError::Disconnected);
-            }
-            retries += 1;
-            thread::sleep(remaining.min(POLL_INTERVAL));
-            if cancel.load(Ordering::Acquire) {
+    let result = (|| {
+        let mut captured = 0;
+        let mut retries = 0;
+        loop {
+            if cancel.load(Ordering::Acquire) || frames.is_closed() {
                 return Err(CameraError::Cancelled);
             }
-            match open(config) {
-                Ok(camera) => source = Some(camera),
-                Err(CameraError::Disconnected) => continue,
-                Err(e) => return Err(e),
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(CameraError::Timeout);
             }
-            continue;
-        }
-        let Some(camera) = source.as_mut() else {
-            return Err(CameraError::WorkerStopped);
-        };
-        match camera.next(remaining.min(POLL_INTERVAL)) {
-            Ok(Some(frame)) => {
-                frame.validate()?;
-                captured += 1;
-                match frames.try_send(frame) {
-                    Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        return Err(CameraError::Cancelled);
+            if source.is_none() {
+                if retries >= config.reconnect_attempts {
+                    return Err(CameraError::Disconnected);
+                }
+                retries += 1;
+                thread::sleep(remaining.min(POLL_INTERVAL));
+                if cancel.load(Ordering::Acquire) {
+                    return Err(CameraError::Cancelled);
+                }
+                match open(config) {
+                    Ok(camera) => source = Some(camera),
+                    Err(CameraError::Disconnected) => continue,
+                    Err(e) => return Err(e),
+                }
+                continue;
+            }
+            let Some(camera) = source.as_mut() else {
+                return Err(CameraError::WorkerStopped);
+            };
+            match camera.next(remaining.min(POLL_INTERVAL)) {
+                Ok(Some(frame)) => {
+                    frame.validate()?;
+                    captured += 1;
+                    match frames.try_send(frame) {
+                        Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            return Err(CameraError::Cancelled);
+                        }
+                    }
+                    if captured >= config.max_frames {
+                        return Ok(());
                     }
                 }
-                if captured >= config.max_frames {
-                    return Ok(());
+                Ok(None) => {}
+                Err(CameraError::Disconnected) => {
+                    if let Some(mut disconnected) = source.take() {
+                        disconnected.stop()?;
+                    }
                 }
+                Err(error) => return Err(error),
             }
-            Ok(None) => {}
-            Err(CameraError::Disconnected) => {
-                source.take();
-            }
-            Err(error) => return Err(error),
         }
+    })();
+    // Stop before publishing completion; Drop remains only a last-resort cleanup.
+    if let Some(camera) = source.as_mut() {
+        camera.stop()?;
     }
+    result
 }
 
 #[cfg(test)]

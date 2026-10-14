@@ -146,3 +146,8 @@ files, model pins, links/path injection, rollback and inert dry-run. An isolated
 file-install test used empty installation directories and existing SELinux policies,
 without real profiles or PAM activation. Fresh-VM dependency/bootstrap downloads,
 new policy installation and RPM lifecycle remain unvalidated. See [validation](validation.md).
+
+After an audit-remediation upgrade, explicitly reactivate existing PAM
+integrations to migrate their known managed blocks. Unknown MFA/access/lockout
+policies are refused. The old partial sudo/KDE install scripts are retired.
+See [audit remediation](audit-remediation.md#recovery-and-upgrade).

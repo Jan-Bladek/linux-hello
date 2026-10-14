@@ -19,11 +19,12 @@ The response includes reference presence, service opt-ins and key backend
 (`file`, `tpm` or `none`). An unqueried GUI state is explicitly unknown; it is not
 assumed enabled because installation files exist.
 
-Status does not decrypt embeddings, capture frames, release a TPM key or perform
-a live biometric match. A configured record can still fail verification if its
-encrypted contents are corrupt or the original camera is unavailable. This is
-management metadata, never authentication success. Read [TPM](tpm.md) for the
-separate administrator key-release check.
+Status validates the key provider and decrypts the protected template locally to
+check integrity, including TPM unsealing when selected. It never exports keys or
+embeddings, captures frames or performs a live biometric match. A validated record
+can still fail recognition if the original camera is unavailable or face quality
+is unsuitable. This status is never authentication success. Read [TPM](tpm.md)
+for the limitations of key wrapping.
 
 ## Pause
 
@@ -88,3 +89,7 @@ JSON is intended for support issues. It contains version, checks and fixed metad
 it excludes user names, host names, hardware serial numbers, frame pixels, embeddings,
 passphrases and keys. Check it before sharing and optionally redirect it to a file.
 The doctor performs no enrollment, PAM edits, network calls or raw-image snapshots.
+
+Status now validates the protected key/configuration/template and pinned model
+hashes without camera capture. It does not confirm PAD, boot integrity or actual
+recognition. See [audit remediation](audit-remediation.md).

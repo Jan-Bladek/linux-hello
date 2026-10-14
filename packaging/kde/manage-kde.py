@@ -26,7 +26,8 @@ LEGACY_LINE = 'auth        [success=1 default=ignore] /usr/lib64/security/pam_li
 SUBSTACK = 'linuxhello-kde-auth'
 LINE = f'auth        substack      {SUBSTACK}\n'
 ORIGINAL = '# Linux Hello original password line: '
-AUTH_STACK = 'auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth substack password-auth\n'
+LEGACY_AUTH_STACK = 'auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth substack password-auth\n'
+AUTH_STACK = sudo.PREAUTH + 'auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth substack password-auth\n'
 SERVICES = ('plasmalogin', 'sddm')
 MANAGED_SERVICES = SERVICES + ('kde',)
 
@@ -140,6 +141,19 @@ def probe(user, content, service=None):
     with tempfile.TemporaryDirectory(prefix='kde-pam-test-', dir='/run' if service=='kde' else ROOT) as folder:
         conf = Path(folder)
         snapshot_pam(conf)
+        import pwd
+        account = pwd.getpwnam(user)
+        profile = ROOT / str(account.pw_uid)
+        shadow = conf / 'profile'
+        shadow.mkdir(mode=0o700)
+        for name in ('config.json', 'template.lht', 'key', 'key.tpm'):
+            source = profile / name
+            if source.exists() or source.is_symlink():
+                meta = sudo.protected(source, True)
+                if meta.st_size > 1024 * 1024: raise RuntimeError('Profile exceeds test size limit')
+                sudo.atomic_write(shadow / name, source.read_bytes(), 0o600)
+        sudo.atomic_write(shadow / 'setup.lock', b'', 0o600)
+        sudo.atomic_write(shadow / f'pam-{service}.enabled', b'linux-hello-login-v1\n', 0o600)
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(driver),service,user,str(conf)]
         if service=='kde':
             import pwd
@@ -148,13 +162,19 @@ def probe(user, content, service=None):
             # non-biometric test configuration is public; state stays private.
             conf.chmod(0o755)
             command=['/usr/bin/setpriv','--reuid',str(account.pw_uid),'--regid',str(account.pw_gid),'--init-groups',str(driver),service,user,str(conf)]
+        # Mounting happens before entering xdm_t/dropping UID; neither probe
+        # can opt the production profile in. The child namespace dies with it.
+        binding = "import subprocess,sys,os; subprocess.run(['/usr/bin/mount','--bind',sys.argv[1],sys.argv[2]],check=True); subprocess.run(['/usr/bin/mount','--bind',sys.argv[3],sys.argv[4]],check=True); subprocess.run(['/usr/bin/mount','--bind',sys.argv[5],'/etc/pam.d'],check=True); os.execv(sys.argv[6],sys.argv[6:])"
+        command = ['/usr/bin/unshare', '--mount', '--propagation', 'private',
+                   '/usr/bin/python3', '-c', binding, str(shadow), str(profile), str(shadow / 'setup.lock'), str(ROOT / '.setup.lock'), str(conf), *command]
         mode=0o644 if service=='kde' else 0o600
         # First prove that this adapter itself matched, independently of any
         # pre-existing permit/other credential module in the vendor stack.
-        strict='auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n'
+        strict=sudo.PREAUTH + 'auth sufficient /usr/lib64/security/pam_linuxhello.so diagnostic\nauth required pam_deny.so\naccount required pam_permit.so\n'
         sudo.atomic_write(conf / service, strict.encode(), mode)
         if service=='kde':
-            for path in conf.iterdir(): path.chmod(0o644)
+            for path in conf.iterdir():
+                if path.is_file(): path.chmod(0o644)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
         run_probe(command,1)
         sudo.atomic_write(conf / service, content, mode)
@@ -188,6 +208,8 @@ def main():
         enabled=MARKER+LINE in text and marker.exists()
         print(f'{service}: {"enabled" if enabled else "disabled"} for {args.user}')
         return
+    sudo.bump_epoch()
+    policy = sudo.check_password_policy('password-auth') if args.action == 'enable' else None
     updated=changed(text,args.action=='enable').encode()
     sudo.protected(ROOT / '.anchor')
     record=ROOT / f'kde-{service}-original.json'
@@ -197,25 +219,19 @@ def main():
         if companion.exists() or companion.is_symlink():
             sudo.protected(companion)
             companion_before=companion.read_bytes()
-            if companion_before!=AUTH_STACK.encode():
+            if companion_before not in (AUTH_STACK.encode(), LEGACY_AUTH_STACK.encode()):
                 raise RuntimeError('Managed authentication substack has administrator changes')
         sudo.protected(ROOT / str(uid) / 'config.json',True)
         sudo.protected(BASE / 'hello-sudo')
         sudo.protected('/usr/lib64/security/pam_linuxhello.so')
-        existed=marker.exists() or marker.is_symlink()
-        if existed: sudo.protected(marker,True)
-        sudo.atomic_write(marker,b'linux-hello-login-v1\n',0o600)
-        subprocess.run(['/usr/sbin/restorecon',str(marker)],check=True)
-        try:
-            print('Look straight at the camera: checking sign-in PAM and SELinux.',flush=True)
-            probe(args.user,updated,service)
-        except BaseException:
-            if not existed: marker.unlink(missing_ok=True)
-            raise
+        if marker.exists() or marker.is_symlink(): sudo.protected(marker,True)
+        print('Look straight at the camera: checking sign-in PAM and SELinux.',flush=True)
+        probe(args.user,updated,service)
         backup=ROOT / f'{service}-before-{hashlib.sha256(original).hexdigest()[:16]}.pam'
         if not backup.exists(): sudo.atomic_write(backup,original,0o600)
         if not record.exists():
             sudo.atomic_write(record,json.dumps({'override_existed':override,'backup':str(backup)}).encode(),0o600)
+    if policy and policy[0].read_bytes()!=policy[1]: raise RuntimeError('Password policy changed during verification')
     # Preserve unexpected administrator changes made during the live probe.
     if source.read_bytes()!=original or ((pam.exists() or pam.is_symlink()) != override):
         raise RuntimeError('KDE PAM changed during verification')
@@ -260,11 +276,16 @@ def main():
     elif updated!=original:
         sudo.atomic_write(pam,updated,stat.S_IMODE(meta.st_mode))
         subprocess.run(['/usr/sbin/restorecon',str(pam)],check=True)
+    if args.action == 'enable':
+        sudo.atomic_write(marker,b'linux-hello-login-v1\n',0o600)
+        subprocess.run(['/usr/sbin/restorecon',str(marker)],check=True)
     print(f'{service}: {args.action}d for {args.user}; password/account/session/wallet hooks retained. Active session continues.')
 
 if __name__=='__main__':
     try:
-        main()
+        if os.geteuid()!=0: raise RuntimeError('Run with sudo')
+        with sudo.setup_lock(), sudo.write_transaction():
+            main()
     except (ActivationError, subprocess.CalledProcessError, RuntimeError, OSError) as error:
         print(f'Linux Hello: {error}', file=sys.stderr)
         sys.exit(1)

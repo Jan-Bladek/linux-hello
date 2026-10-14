@@ -212,6 +212,8 @@ pub(super) fn evaluate(
     };
     Ok(
         serde_json::json!({"scope":"claimed-user multi-frame 1:1 verification; no motion/PAD/authentication verdict",
+        "protocol":"offline_all_frames_2_to_12_without_live_quality_retry",
+        "pam_acquisition_protocol_evaluated":false,"end_to_end_authentication_metrics":false,
         "scoring_policy":"pose_median3_centroid_v2","minimum_frames":2,"minimum_diagnostic_threshold":0.8,
         "calibrated_threshold":threshold,"calibration_target_empirical_far":target_far,
         "calibration":threshold.map(|t|report(Split::Calibration,t)),

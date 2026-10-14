@@ -145,6 +145,8 @@ The original line is retained in a validated comment for exact rollback, includi
 its spacing. A separate root-owned `/etc/pam.d/linuxhello-kde-auth` contains:
 
 ```pam
+auth required pam_env.so
+auth required pam_faildelay.so delay=2000000
 auth sufficient /usr/lib64/security/pam_linuxhello.so
 auth substack password-auth
 ```
@@ -241,7 +243,7 @@ the ordinary system filesystem. It accepts no arguments or target identity:
 the kernel real UID must be a normal account, and its protected root-private
 `pam-kde.enabled` must contain the exact opt-in magic. It validates the fixed
 helper and profile paths, disables dumps, closes inherited descriptors above2,
-clears the environment and execs only `hello-sudo verify REAL_UID` from `/`.
+clears the environment and execs only `hello-sudo verify-service REAL_UID kde` from `/`.
 There is no enrollment, diagnostic, command or template export interface.
 The existing verifier retains camera/worker isolation and template binding.
 Real UID remains the caller's so PAM can cancel its own child. The launcher
@@ -277,3 +279,7 @@ verifier exits: own-account success, missing/corrupt opt-in, and rejection.
 For a real password fallback check use
 `sudo python3 packaging/kde/test-password-fallback.py jan --service kde`.
 The presentation attack/NIR qualification limitations above also apply here.
+
+The audit remediation adds prechecks, strict supported-policy validation and
+private namespace probes. Existing managed blocks must be explicitly reactivated
+after upgrading; see [upgrade and recovery](audit-remediation.md#recovery-and-upgrade).

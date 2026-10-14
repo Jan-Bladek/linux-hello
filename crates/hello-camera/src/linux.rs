@@ -460,6 +460,15 @@ impl LinuxCamera {
 }
 
 impl CameraSource for LinuxCamera {
+    fn stop(&mut self) -> Result<(), CameraError> {
+        if self.streaming {
+            let mut kind = v4l2_buf_type_V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            ioctl!(&self.file, VIDIOC_STREAMOFF, &mut kind).map_err(io_error)?;
+            self.streaming = false;
+        }
+        self.maps.clear();
+        Ok(())
+    }
     fn next(&mut self, wait: Duration) -> Result<Option<Frame>, CameraError> {
         let mut poll = libc::pollfd {
             fd: self.file.as_raw_fd(),

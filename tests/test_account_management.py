@@ -8,9 +8,15 @@ from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('account_management', Path(__file__).parents[1] / 'packaging/kde/manage-person.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+helper_spec = importlib.util.spec_from_file_location('audit_recovery', Path(__file__).parents[1] / 'packaging/sudo/manage.py')
+recovery = importlib.util.module_from_spec(helper_spec); helper_spec.loader.exec_module(recovery)
 
 
 class AccountManagementTests(unittest.TestCase):
+    def setUp(self):
+        validator = patch.object(m, 'reference_valid', return_value=True)
+        validator.start(); self.addCleanup(validator.stop)
+
     def test_subject_is_authorized_normal_account_only(self):
         for environment in [{}, {'PKEXEC_UID':'0'}, {'PKEXEC_UID':'-1'}, {'SUDO_UID':'garbage'}, {'PKEXEC_UID':'0','SUDO_UID':'1000'}]:
             with self.assertRaises(RuntimeError): m.subject(environment)
@@ -27,8 +33,10 @@ class AccountManagementTests(unittest.TestCase):
         (profile/'key.tpm').write_bytes(b'encrypted-key-secret')
         for owner in (profile,other):
             for service in ('plasmalogin','kde'): (owner/f'pam-{service}.enabled').write_bytes(m.MAGIC)
-        sudo=SimpleNamespace(ROOT=state,PAM=pam/'sudo',MARKER='# sudo\n',LINE='auth sufficient face\n',
-            protected=lambda p,private=False:p.stat(),atomic_write=lambda p,b,mode:p.write_bytes(b))
+        sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',MARKER='# sudo\n',LINE='auth sufficient face\n',
+            child_environment=lambda:{'LANG':'C.UTF-8'},child_lock_options=lambda:{},
+            protected=lambda p,private=False:p.stat(),atomic_write=lambda p,b,mode:p.write_bytes(b),
+            restore_snapshots=lambda snapshots: recovery.restore_snapshots(snapshots, lambda p,b,mode:p.write_bytes(b)))
         kde=SimpleNamespace(SERVICES=('plasmalogin','sddm'),SUBSTACK='face-substack',MARKER='# kde\n',LINE='auth substack face\n')
         (pam/'sudo').write_text(sudo.MARKER+sudo.LINE)
         for service in ('plasmalogin','kde'): (pam/service).write_text(kde.MARKER+kde.LINE)

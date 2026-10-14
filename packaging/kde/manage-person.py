@@ -58,6 +58,20 @@ def private_profile(profile, uid):
     return True
 
 
+def reference_valid(uid, sudo):
+    """Use the verifier's exact parser/AEAD/model checks, without opening the camera."""
+    helper = BASE / 'hello-sudo'
+    sudo.protected(helper)
+    try:
+        result = subprocess.run([str(helper), 'validate', str(uid)], check=False,
+                                timeout=20, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                env=sudo.child_environment(), **sudo.child_lock_options())
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def status(account, sudo, kde):
     profile = sudo.ROOT / str(account.pw_uid)
     enrolled = False; backend = 'none'
@@ -72,7 +86,7 @@ def status(account, sudo, kde):
             valid = (config.get('uid') == account.pw_uid and config.get('version') == 1
                      and type(threshold) in (float, int) and math.isfinite(threshold)
                      and 0.80 <= threshold <= 1.0)
-            enrolled = valid and backend != 'none' and present(profile / 'template.lht')
+            enrolled = valid and backend != 'none' and present(profile / 'template.lht') and reference_valid(account.pw_uid, sudo)
     def pam_contains(service, block):
         path = PAM_DIR / service
         if not present(path): return False
@@ -109,6 +123,7 @@ def operate(action, account, sudo, kde, acknowledge=None):
             snapshots[path] = (path.read_bytes(), stat.S_IMODE(meta.st_mode))
         else: snapshots[path] = None
     try:
+        sudo.bump_epoch()
         # Disable only this UID. Never globally disable sudo for other accounts.
         sudo.atomic_write(profile / 'pam-sudo.disabled', b'linux-hello-sudo-disabled-v1\n', 0o600)
         for service in (*kde.SERVICES, 'kde'):
@@ -116,7 +131,7 @@ def operate(action, account, sudo, kde, acknowledge=None):
                 subprocess.run(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'disable',
                                 '--user', account.pw_name, '--service', service],
                                check=True, timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               env={'LANG': 'C.UTF-8'})
+                               env=sudo.child_environment(), **sudo.child_lock_options())
         if action == 'remove':
             for name in ('key', 'key.tpm', 'template.lht', 'config.json'):
                 (profile / name).unlink(missing_ok=True)
@@ -129,10 +144,7 @@ def operate(action, account, sudo, kde, acknowledge=None):
         if acknowledge: acknowledge(result)
         return result
     except BaseException:
-        for path, before in snapshots.items():
-            if before is None: path.unlink(missing_ok=True)
-            else: sudo.atomic_write(path, before[0], before[1])
-            if present(path): subprocess.run(['/usr/sbin/restorecon', str(path)], check=True)
+        sudo.restore_snapshots(snapshots)
         raise
 
 
@@ -152,6 +164,7 @@ def main():
     try:
         with lockpath.open('r+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.environ['LINUX_HELLO_SETUP_LOCK_FD'] = str(lock.fileno())
             def acknowledge(result):
                 result['operation'] = sys.argv[1]
                 print(json.dumps(result), flush=True)

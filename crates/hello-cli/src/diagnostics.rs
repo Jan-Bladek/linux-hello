@@ -91,6 +91,44 @@ impl SessionReference {
             revision: NEXT_REFERENCE_REVISION.fetch_add(1, Ordering::Relaxed),
         })
     }
+    /// Move only pending samples into a private scan transaction; active identity stays intact.
+    pub fn stage_enrollment(&mut self) -> (u64, Self) {
+        (
+            self.revision,
+            Self {
+                reference: None,
+                pending: self.pending.take(),
+                revision: self.revision,
+            },
+        )
+    }
+    pub fn finish_enrollment(
+        &mut self,
+        expected_revision: u64,
+        mut staged: Self,
+        cleanup_ok: bool,
+    ) -> Result<(), Error> {
+        if self.revision != expected_revision {
+            return Err("Reference changed during scan".into());
+        }
+        if cleanup_ok && staged.reference.is_some() {
+            self.reference = staged.reference.take();
+        }
+        // A completed but failed scan is discarded. Incomplete samples can resume.
+        self.pending = staged.pending.take();
+        self.revision = NEXT_REFERENCE_REVISION.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+    pub fn into_template(mut self) -> Result<hello_face::Template, Error> {
+        if self.pending.is_some() {
+            return Err("Enrollment is incomplete".into());
+        }
+        match self.reference.take() {
+            Some(Reference::Multi(template)) => Ok(template),
+            _ => Err("No complete reference".into()),
+        }
+    }
+
     pub fn begin_anonymous_enrollment(
         &mut self,
         identity: &DeviceIdentity,
@@ -1457,6 +1495,26 @@ pub fn frame_quality(captured: &hello_camera::Frame) -> Result<hello_face::Quali
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_enrollment_only_replaces_active_face_after_successful_cleanup() {
+        let mut active = strict_reference().into_inner().unwrap();
+        active.rename("Original").unwrap();
+        let (revision, _) = active.stage_enrollment();
+        let mut staged = strict_reference().into_inner().unwrap();
+        staged.rename("Replacement").unwrap();
+        active.finish_enrollment(revision, staged, false).unwrap();
+        assert_eq!(active.display_name(), Some("Original"));
+        let (revision, _) = active.stage_enrollment();
+        let mut staged = strict_reference().into_inner().unwrap();
+        staged.rename("Replacement").unwrap();
+        active.finish_enrollment(revision, staged, true).unwrap();
+        assert_eq!(active.display_name(), Some("Replacement"));
+        let (revision, staged) = active.stage_enrollment();
+        active.rename("Concurrent edit").unwrap();
+        assert!(active.finish_enrollment(revision, staged, true).is_err());
+        assert_eq!(active.display_name(), Some("Concurrent edit"));
+    }
 
     fn identity() -> DeviceIdentity {
         DeviceIdentity {

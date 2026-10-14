@@ -166,8 +166,13 @@ fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()>
     let diagnostic = diagnostic_allowed(service, caller, diagnostic);
     let child = Command::new(boundary::HELPER)
         .args([
-            if diagnostic { "diagnose" } else { "verify" },
+            if diagnostic {
+                "diagnose-service"
+            } else {
+                "verify-service"
+            },
             &uid.to_string(),
+            service,
         ])
         .env_clear()
         .env("LANG", "C.UTF-8")

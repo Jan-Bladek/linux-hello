@@ -1,7 +1,9 @@
 //! Optional TPM-only wrapping of the existing per-account template key.
 //! No PCR binding: protects copied disks, not a compromised running host.
 use super::{Error, directory};
-use hello_pam::boundary::{ROOT, protected_file};
+#[cfg(test)]
+use hello_pam::boundary::ROOT;
+use hello_pam::boundary::protected_file;
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
@@ -161,23 +163,6 @@ pub(super) fn load(uid: u32) -> Result<Option<hello_storage::SecretKey>, Error> 
 /// Shares the GUI setup lock. Never changes PAM configuration or camera policy.
 pub(super) fn enable(uid: u32) -> Result<(), Error> {
     name(uid)?;
-    let lockpath = Path::new(ROOT).join(".setup.lock");
-    hello_pam::boundary::protected_path(&lockpath)?;
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&lockpath)?;
-    // Validate the opened file, not just an ancestor. Another authorized root
-    // process is the only writer in this directory.
-    protected_file(&lockpath, true, 1024)?;
-    // SAFETY: flock operates on the live file descriptor without pointer arguments.
-    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err("Another face setup is active".into());
-    }
     let path = directory(uid).join("key.tpm");
     if fs::symlink_metadata(&path).is_ok() {
         super::load(uid)?; // verify TPM key and authenticated full template

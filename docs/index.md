@@ -49,7 +49,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 - [Accuracy improvements](accuracy-improvements.md) and [Howdy analysis](howdy-analysis.md): implementation decisions and prior failure analysis.
 - [Inference history](inference-history.md): archived, superseded development notes.
 - [Validation](validation.md): current evidence summary followed by a historical milestone log.
-- [Test entry points](../tests/README.md), [contributing](../CONTRIBUTING.md), [contributors](../CONTRIBUTORS.md), [security policy](../SECURITY.md) and [authselect design](../packaging/authselect/README.md).
+- [Test entry points](../tests/README.md), [contributing](../CONTRIBUTING.md), [security policy](../SECURITY.md) and [authselect design](../packaging/authselect/README.md).
 
 ## Evidence and documentation conventions
 
@@ -64,3 +64,5 @@ UI steps, disabled authentication statements and failed activation attempts are
 historical, not current instructions. Use the current guides above for operations;
 retain the dated log for traceability. Dependency audits and research results are
 snapshots, not statements that upstream has remained unchanged.
+
+- [Technical audit remediation and open findings](audit-remediation.md)

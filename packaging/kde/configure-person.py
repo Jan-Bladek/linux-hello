@@ -4,6 +4,7 @@ Only pkexec's authenticated real subject is accepted. No face result from GUI is
 trusted: every existing manager runs its real verification before activation.
 """
 import fcntl
+import io
 import importlib.util
 import json
 import os
@@ -35,6 +36,40 @@ def load(name, path):
     return module
 
 
+class DeadlineInput:
+    """One monotonic deadline covers header, body and required EOF."""
+    def __init__(self, stream, timeout=15):
+        self.fd = stream.fileno()
+        self.deadline = time.monotonic() + timeout
+        os.set_blocking(self.fd, False)
+
+    def read(self, length):
+        result = bytearray()
+        while len(result) < length:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.fd], [], [], remaining)[0]:
+                raise TimeoutError('Setup request timed out')
+            try:
+                chunk = os.read(self.fd, length - len(result))
+            except (BlockingIOError, InterruptedError):
+                continue
+            if not chunk:
+                break
+            result.extend(chunk)
+        return result
+
+    def readline(self, limit):
+        result = bytearray()
+        while len(result) < limit:
+            byte = self.read(1)
+            if not byte:
+                break
+            result.extend(byte)
+            if byte == b'\n':
+                break
+        return result
+
+
 def request(input):
     line = input.readline(4097)
     if len(line) > 4096 or not line.endswith(b'\n'):
@@ -50,9 +85,13 @@ def request(input):
     if not 12 <= length <= 1024:
         raise ValueError('Invalid secret length')
     secret = bytearray(input.read(length))
-    if len(secret) != length or len(secret.decode('utf-8')) < 12 or input.read(1):
-        raise ValueError('Invalid secret framing')
-    return data, secret
+    try:
+        if len(secret) != length or len(secret.decode('utf-8')) < 12 or input.read(1):
+            raise ValueError('Invalid secret framing')
+        return data, secret
+    except BaseException:
+        secret[:] = b'\0' * len(secret)
+        raise
 
 
 def progress(message, recovery=False):
@@ -71,7 +110,8 @@ def complete(result):
 def command(args, secret=None):
     result = subprocess.run(args, input=secret, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL, timeout=100,
-                            env={'LANG': 'C.UTF-8'})
+                            env={'LANG': 'C.UTF-8', **({ 'LINUX_HELLO_SETUP_LOCK_FD': os.environ['LINUX_HELLO_SETUP_LOCK_FD']} if 'LINUX_HELLO_SETUP_LOCK_FD' in os.environ else {})},
+                            pass_fds=(int(os.environ['LINUX_HELLO_SETUP_LOCK_FD']),) if 'LINUX_HELLO_SETUP_LOCK_FD' in os.environ else ())
     if result.returncode:
         raise RuntimeError('Verification or setup failed. Look straight at the camera and try again.')
 
@@ -96,6 +136,7 @@ def configure(data, secret, account, sudo, kde):
         else:
             snapshots[path] = None
     try:
+        sudo.bump_epoch()
         profile.mkdir(mode=0o700, exist_ok=True)
         if not profile_is_private(profile):
             raise RuntimeError('Invalid protected reference directory.')
@@ -130,13 +171,7 @@ def configure(data, secret, account, sudo, kde):
         return result
     except BaseException:
         progress('Restoring the previous configuration. Password fallback remains available.', recovery=True)
-        for path, before in snapshots.items():
-            if before is None:
-                path.unlink(missing_ok=True)
-            else:
-                sudo.atomic_write(path, before[0], before[1])
-            if path.exists():
-                subprocess.run(['/usr/sbin/restorecon', str(path)], check=True)
+        sudo.restore_snapshots(snapshots)
         raise
 
 
@@ -164,9 +199,7 @@ def main():
         sudo.protected(path)
     kde = load('hello_kde_management', BASE / 'manage-kde.py')
     # Never hold a global configuration lock waiting on an unresponsive sender.
-    if not select.select([sys.stdin], [], [], 15)[0]:
-        raise RuntimeError('Setup request timed out.')
-    data, secret = request(sys.stdin.buffer)
+    data, secret = request(DeadlineInput(sys.stdin.buffer))
     os.umask(0o077)
     def interrupted(*_):
         raise InterruptedError('Setup cancelled')
@@ -180,6 +213,7 @@ def main():
         sudo.protected(lock_path, True)
         with lock_path.open('r+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.environ['LINUX_HELLO_SETUP_LOCK_FD'] = str(lock.fileno())
             configure(data, secret, account, sudo, kde)
     finally:
         secret[:] = b'\0' * len(secret)

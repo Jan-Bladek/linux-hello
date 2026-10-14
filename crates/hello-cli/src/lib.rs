@@ -10,3 +10,6 @@ pub mod diagnostics;
 #[cfg(target_os = "linux")]
 pub mod account;
 pub mod health;
+
+#[cfg(target_os = "linux")]
+pub mod process_io;

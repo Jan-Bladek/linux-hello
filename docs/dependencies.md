@@ -62,6 +62,14 @@ provenance are recorded in [inference diagnostics](inference.md). The lockfile
 has changed; the 600-dependency audit count above describes the previous graph.
 
 The expanded 609-dependency lockfile was audited on 2026-10-11: zero known
-vulnerability entries and the same two unmaintained advisories. Strict audit
-failed in this snapshot; `cargo deny --locked check licenses sources bans` passes with warnings.
+vulnerability entries and the same two unmaintained advisories. Strict audit failed in this historical snapshot. The 2026-10-14 technical audit
+found a missing version on hello-sudo → hello-cli that made the bans check fail;
+the audit remediation adds that constraint, and a new local license/source/bans
+run passes with warnings.
 No suppressions were introduced.
+
+The remediation run on 2026-10-14 checks 615 lockfile entries: strict advisories
+still fail with the same two unmaintained dependencies and zero reported known
+vulnerability entries. No warning exclusions were introduced. These counts
+describe this run, not a permanent guarantee. Use `cargo tree --workspace
+--all-features --target all -i ttf-parser` to include the GUI in reachability checks.

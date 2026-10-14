@@ -200,4 +200,7 @@ no weights are distributed. Windows Hello-equivalent security is not claimed.
 ## Contributors
 
 Maintained by [Jan-Bladek](https://github.com/Jan-Bladek), with AI-assisted development
-by **OpenAI Codex**. See [contributors and attribution](CONTRIBUTORS.md).
+by **OpenAI Codex**.
+
+The [technical audit remediation tracker](docs/audit-remediation.md) documents
+implemented security fixes, upgrade requirements and remaining release blockers.

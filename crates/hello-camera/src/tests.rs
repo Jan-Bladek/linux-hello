@@ -351,3 +351,31 @@ async fn substituted_device_aborts_reconnect() {
     session.stop().await.unwrap();
     assert_eq!(observed.load(Ordering::SeqCst), 2);
 }
+
+#[tokio::test]
+async fn valid_frame_with_failed_stream_stop_cannot_report_cleanup_success() {
+    struct StopFailure(Arc<AtomicUsize>);
+    impl CameraSource for StopFailure {
+        fn next(&mut self, _: Duration) -> Result<Option<Frame>, CameraError> {
+            Ok(Some(grey()))
+        }
+        fn stop(&mut self) -> Result<(), CameraError> {
+            Err(CameraError::InvalidFrame("injected STREAMOFF failure"))
+        }
+    }
+    impl Drop for StopFailure {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    let released = Arc::new(AtomicUsize::new(0));
+    let observed = released.clone();
+    let mut session =
+        CameraSession::spawn(config(), move |_| Ok(StopFailure(released.clone()))).unwrap();
+    assert!(session.next_frame().await.unwrap().is_some());
+    assert!(matches!(
+        session.stop().await,
+        Err(CameraError::InvalidFrame("injected STREAMOFF failure"))
+    ));
+    assert_eq!(observed.load(Ordering::SeqCst), 1);
+}

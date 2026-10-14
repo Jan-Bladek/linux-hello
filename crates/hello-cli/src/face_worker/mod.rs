@@ -410,6 +410,7 @@ pub fn run_worker() -> Result<(), Error> {
         limits::apply_limits()?;
     }
     let models = PinnedModels::read(Path::new(&directory))?;
+    limits::drop_privileges()?;
     limits::restrict_syscalls()?;
     let mut engine = TrackedEngine {
         engine: OpenCvEngine::from_pinned_models(models)?,

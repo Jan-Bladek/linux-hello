@@ -44,3 +44,7 @@ CI runs code, dependency and license checks. A passing CI result is not an
 independent audit, Fedora certification or physical anti-spoofing evaluation.
 Advisory exceptions must be narrow, documented, owned and periodically reviewed;
 do not ignore entire classes of warnings merely to make a check pass.
+
+The [2026-10-14 remediation tracker](docs/audit-remediation.md) distinguishes
+implemented fixes from open qualification, dependency and recovery requirements.
+The technical audit is not evidence of validated PAD.

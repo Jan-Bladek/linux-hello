@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-14",
+  "baseline_commit": "a75f0910bf05bff6cf5587776d5196f0e78e0218",
+  "tested_source_diff_sha256": "11832d3e15dfb9170182fa2eae3c4a2d0200047cb2e4cb84175afab9b58f612e",
+  "checks": [
+    {
+      "name": "default workspace tests",
+      "status": "passed",
+      "passed": 79,
+      "ignored": 5
+    },
+    {
+      "name": "optional camera/CLI/GUI/helper/PAM tests",
+      "status": "passed",
+      "passed": 125,
+      "ignored": 10,
+      "note": "Overlaps default workspace tests; do not sum as unique tests."
+    },
+    {
+      "name": "Python regression tests",
+      "status": "passed",
+      "passed": 48
+    },
+    {
+      "name": "isolated session-bus integration",
+      "status": "passed",
+      "passed": 2
+    },
+    {
+      "name": "root synthetic profile recovery and actual release worker credentials/model loading",
+      "status": "passed",
+      "passed": 2,
+      "scope": "Private mount namespace; no camera or biometric identity verdict."
+    },
+    {
+      "name": "PAM dispatch with compiled module and launcher",
+      "status": "passed",
+      "scope": "Private namespace; simulated helper outcomes; auth/account/setcred, negative controls; no real biometric assertion."
+    },
+    {
+      "name": "rustfmt and both Clippy configurations",
+      "status": "passed"
+    },
+    {
+      "name": "full optional release compilation",
+      "status": "passed"
+    },
+    {
+      "name": "Python/shell syntax, documentation links, whitespace",
+      "status": "passed"
+    },
+    {
+      "name": "cargo-deny licenses sources bans",
+      "status": "passed_with_warnings"
+    },
+    {
+      "name": "cargo-audit --deny warnings",
+      "status": "failed",
+      "lockfile_dependency_count": 615,
+      "known_vulnerability_entries": 0,
+      "unmaintained": [
+        "RUSTSEC-2025-0141",
+        "RUSTSEC-2026-0192"
+      ],
+      "database": {
+        "advisory-count": 1314,
+        "last-commit": "caee11f41fab07d676c0a4655a2a5dd1f94da97c",
+        "last-updated": "2026-10-14T15:17:45+02:00"
+      }
+    }
+  ],
+  "not_validated": [
+    "Physical PAD/APCER/BPCER",
+    "Representative NIR FAR/FRR",
+    "Real camera recognition after these changes",
+    "Production live KDE activation with new namespace probes",
+    "SELinux policy upgrade/recovery in a disposable VM",
+    "Physical power-loss/boot recovery",
+    "Population accuracy"
+  ],
+  "production_pam_modified": false,
+  "biometric_data_included": false,
+  "raw_audit_published": false,
+  "publication_parent": "84cce540fe3f702b5e4e20b36f607035f263bd0a"
+}

@@ -113,6 +113,38 @@ def read_bundle(stage, owner):
 def run(args): subprocess.run(args, check=True, env={'LANG': 'C.UTF-8', 'PATH': '/usr/sbin:/usr/bin:/sbin:/bin'})
 
 
+def loaded_policy(module):
+    """Inspect the effective priority-400 HLL, never assume a name is a version."""
+    full = subprocess.check_output(['/usr/sbin/semodule', '-lfull'], text=True)
+    priorities = [int(parts[0]) for line in full.splitlines() if len(parts:=line.split()) >= 2 and parts[1] == module and parts[0].isdigit()]
+    if not priorities or max(priorities) != 400:
+        raise RuntimeError('Unknown SELinux module priority or administrator override: ' + module)
+    with tempfile.TemporaryDirectory(prefix='hello-policy-read-') as folder:
+        subprocess.run(['/usr/sbin/semodule', '-X', '400', '-H', '-E', module],
+                       cwd=folder, check=True, stdout=subprocess.DEVNULL,
+                       env={'LANG': 'C.UTF-8', 'PATH': '/usr/sbin:/usr/bin:/sbin:/bin'})
+        path = Path(folder) / (module + '.pp')
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 10 * 1024 * 1024:
+            raise RuntimeError('Unsupported SELinux module representation; administrator review required')
+        return path.read_bytes()
+
+
+def checked_policies(contents, existing, snapshots):
+    changes = []
+    for module in ('linuxhello_kde', 'linuxhello_tpm'):
+        name = module + '.pp'
+        if name not in contents: continue
+        if module not in existing:
+            changes.append((module, None)); continue
+        loaded = loaded_policy(module)
+        if loaded == contents[name]: continue
+        previous = snapshots.get(BASE / name)
+        if previous is None or previous[0] != loaded:
+            raise RuntimeError('SELinux administrator override or unknown module version: ' + module)
+        changes.append((module, loaded))
+    return changes
+
+
 def install(manifest, contents):
     directory(BASE / 'models', 0o755)
     directory(BIN, 0o755)
@@ -144,26 +176,40 @@ def install(manifest, contents):
         entries = [line for line in local_contexts.splitlines() if line.split() and line.split()[0] == probe]
         if entries and not all(':xdm_exec_t:' in line for line in entries):
             raise RuntimeError('Existing probe SELinux override requires manual review')
-        added_modules = []; added_context = False
+        policy_changes = checked_policies(contents, existing, snapshots)
+        installed_modules = []; added_context = False
         try:
             for path, (data, mode) in updates.items(): atomic(path, data, mode)
-            for module in ['linuxhello_kde', 'linuxhello_tpm']:
-                if module + '.pp' in contents and module not in existing:
-                    run(['/usr/sbin/semodule', '-i', str(BASE / (module + '.pp'))]); added_modules.append(module)
+            for module, previous in policy_changes:
+                installed_modules.append((module, previous))
+                run(['/usr/sbin/semodule', '-i', str(BASE / (module + '.pp'))])
+                if loaded_policy(module) != contents[module + '.pp']:
+                    raise RuntimeError('Installed SELinux policy verification failed')
             if not entries:
                 run(['/usr/sbin/semanage', 'fcontext', '-a', '-t', 'xdm_exec_t', probe]); added_context = True
             run(['/usr/sbin/restorecon', '-R', str(BASE), str(STATE), str(PAM), str(BIN / 'linux-hello'), str(BIN / 'hello'), str(DESKTOP)])
             for path in {p.parent for p in updates}: sync_dir(path)
-        except BaseException:
-            for path, before in snapshots.items():
-                if before is None: path.unlink(missing_ok=True)
-                else: atomic(path, before[0], before[1])
-            if added_context: run(['/usr/sbin/semanage', 'fcontext', '-d', probe])
-            for module in reversed(added_modules): run(['/usr/sbin/semodule', '-r', module])
-            for path in snapshots:
-                if path.exists(): run(['/usr/sbin/restorecon', str(path)])
+        except BaseException as original_error:
+            failures = []
+            handlers = {sig: signal.signal(sig, signal.SIG_IGN)
+                        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM)}
+            def recover(operation):
+                try: operation()
+                except BaseException as error: failures.append(error)
+            try:
+                for path, before in snapshots.items():
+                    recover(lambda path=path, before=before: path.unlink(missing_ok=True) if before is None else atomic(path, before[0], before[1]))
+                if added_context: recover(lambda: run(['/usr/sbin/semanage', 'fcontext', '-d', probe]))
+                for module, previous in reversed(installed_modules):
+                    recover(lambda module=module, previous=previous: run(['/usr/sbin/semodule', '-r', module]) if previous is None
+                            else run(['/usr/sbin/semodule', '-i', str(BASE / (module + '.pp'))]))
+                for path in snapshots:
+                    if path.exists(): recover(lambda path=path: run(['/usr/sbin/restorecon', str(path)]))
+            finally:
+                for sig, handler in handlers.items(): signal.signal(sig, handler)
+            if failures: raise RuntimeError('Installation recovery incomplete; review installed files/policy before using biometrics') from original_error
             raise
-    print('Full application installed. PAM, references, keys and existing policies were retained. No service was started.')
+    print('Full application installed. PAM, references and keys were retained; installed SELinux module contents were checked. No service was started.')
 
 
 def main():

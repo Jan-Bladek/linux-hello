@@ -16,14 +16,13 @@ path = "src/face_worker_main.rs"
 required-features = ["face-opencv"]
 
 [features]
-face-opencv = ["dep:hello-face", "hello-face/opencv", "dep:zeroize", "dep:libc", "dep:sha2", "dep:hello-storage"]
+face-opencv = ["dep:hello-face", "hello-face/opencv", "dep:zeroize", "dep:sha2", "dep:hello-storage"]
 
 [dependencies]
 hello-camera.workspace = true
 hello-storage = { workspace = true, optional = true }
 hello-face = { workspace = true, optional = true }
 zeroize = { workspace = true, optional = true }
-libc = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hello-core.workspace = true
 hello-ipc.workspace = true
@@ -33,6 +32,9 @@ clap.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
