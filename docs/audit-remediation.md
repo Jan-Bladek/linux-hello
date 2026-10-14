@@ -120,3 +120,29 @@ No physical accuracy, PAD or power-loss benchmark is reported.
 and a SHA-256 of the staged source diff. Real PAM dispatch with the newly compiled
 module and launcher also passed using simulated verifier outcomes in a private
 namespace, including earlier required denial and missing/corrupt opt-in.
+
+## Installed-host follow-up
+
+The owner subsequently requested deployment. The full bundle was installed with
+cached dependencies/models and the existing TPM policy. Enrolled data and key
+were retained. A provisioning test exposed a nested read-lock issue: the verifier
+must duplicate the inherited exclusive open description rather than acquire an
+independent shared lock or downgrade its parent's lease. A new synthetic root
+regression confirms both successful delegation and continued exclusion of an
+independent reader after the child closes its duplicate.
+
+The installed camera/inference path ran, but the live sudo activation acquired
+0/3 clear faces and rejected the attempt. This is a failed acquisition, not an
+accuracy/PAD benchmark. No PAM configuration migration was committed by that
+attempt. Password fallback is available; the stricter verifier refuses old
+managed stacks until the owner completes explicit activation while facing the
+camera. Installed code is therefore not evidence of completed live activation.
+
+After the owner confirmed camera readiness, the repeat activation succeeded: the
+sudo reference matched three fresh frames, both PlasmaLogin probes and both
+unprivileged KDE locker probes returned successful auth/account/setcred. The final
+self-account status reported all three uses enabled and TPM key/template validation
+succeeded. Hash comparison confirmed the existing protected template/configuration
+and key were unchanged. SELinux remained Enforcing. No desktop logout, lock,
+display-manager restart, new enrollment or TPM migration was performed. These are
+functional checks on the existing owner/sensor, not PAD or population qualification.

@@ -3,6 +3,7 @@
 No camera, policy/PAM edits, installed executable replacement or real profiles.
 """
 import os
+import fcntl
 from pathlib import Path
 import subprocess
 import sys
@@ -25,6 +26,10 @@ def main():
         subprocess.run(['/usr/bin/mount','--bind',str(state),str(STATE)],check=True)
         try:
             subprocess.run([sys.argv[1],'--exact','tests::interrupted_publication_recovers_only_previous_synthetic_profile','--ignored','--nocapture'],check=True,timeout=20)
+            with (STATE/'.setup.lock').open('rb') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+                subprocess.run([sys.argv[1],'--exact','tests::delegated_verification_keeps_parent_exclusive_lock','--ignored','--nocapture'],check=True,timeout=10,
+                    pass_fds=(lock.fileno(),),env={**os.environ,'LINUX_HELLO_SETUP_LOCK_FD':str(lock.fileno())})
             subprocess.run([sys.argv[2],'--exact','face_worker::limits::audit_tests::root_worker_drops_all_credentials_before_real_model_parsing','--ignored','--nocapture'],check=True,timeout=20)
         finally:
             subprocess.run(['/usr/bin/umount',str(STATE)],check=True)

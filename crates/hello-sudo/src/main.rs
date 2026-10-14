@@ -550,6 +550,31 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "root private namespace and inherited setup descriptor required"]
+    fn delegated_verification_keeps_parent_exclusive_lock() {
+        assert_ne!(
+            fs::read_link("/proc/self/ns/mnt").unwrap(),
+            fs::read_link("/proc/1/ns/mnt").unwrap()
+        );
+        assert_eq!(
+            fs::read(Path::new(boundary::ROOT).join(".audit-test-only")).unwrap(),
+            b"synthetic-only\n"
+        );
+        assert!(std::env::var_os("LINUX_HELLO_SETUP_LOCK_FD").is_some());
+        let inherited = read_lock().unwrap();
+        let competing =
+            protected_file(&Path::new(boundary::ROOT).join(".setup.lock"), true, 1024).unwrap();
+        // SAFETY: integer-only flock on an independent validated descriptor.
+        let result = unsafe { libc::flock(competing.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) };
+        assert_ne!(result, 0);
+        drop(inherited);
+        // Closing the child's duplicate must retain the parent's exclusive lease.
+        // SAFETY: same valid descriptor and nonblocking shared flock.
+        let result = unsafe { libc::flock(competing.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) };
+        assert_ne!(result, 0);
+    }
+
+    #[test]
     fn private_import_pipe_rejects_oversize_truncation_and_extra_input() {
         let mut frame = 12_u16.to_be_bytes().to_vec();
         frame.extend_from_slice(b"test-phrase!");

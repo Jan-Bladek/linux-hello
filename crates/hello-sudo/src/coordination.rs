@@ -9,6 +9,11 @@ use std::{
 };
 use zeroize::Zeroizing;
 pub(super) fn read_lock() -> Result<std::fs::File, Error> {
+    // Authorized provisioning delegates the same exclusive open description.
+    // Never convert it to a shared flock, which would weaken the parent's lock.
+    if std::env::var_os("LINUX_HELLO_SETUP_LOCK_FD").is_some() {
+        return setup_lock();
+    }
     let file = protected_file(&Path::new(boundary::ROOT).join(".setup.lock"), true, 1024)?;
     // SAFETY: file is a validated owned descriptor; shared locking cannot mutate data.
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
