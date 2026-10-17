@@ -15,7 +15,7 @@ audit, new score, PAD certification or measured recognition benchmark.
 | N05: full pipeline identity | Keep current pinned detector/recognizer and preprocessing. | Open: authenticated full detector/alignment/runtime/scoring identity and explicit template migration. No incompatible templates silently mixed. |
 | N06: TPM boot policy | Keep the existing honest no-PCR/no-antirollback limits. | Open: PCR/update/recovery/rollback qualification on separate hardware; no untested changes to the owner's sealed key. |
 | N07: interrupted profile journal | Build/fsync a complete `.profile-prepare` before atomically publishing `.profile-update`. Commit/rollback atomically retires the journal before deleting backups. Recovery distinguishes incomplete preparation, active rollback and interrupted cleanup. | Partial: legacy incomplete active journals, full multi-service durable transactions, arbitrary administrator edit CAS and real power-loss/VM coverage remain open. |
-| N08: dependencies | Migrate first-party D-Bus code to zbus 6.0.0, integrated object-path types and updated builders; pin required Tokio 1.53.3. | Partial: Slint/windowing still pulls legacy dependencies. Strict audit still fails on five maintenance advisories; no suppression added. |
+| N08: dependencies | Migrate first-party D-Bus code to zbus 6.0.0, integrated object-path types and updated builders; pin required Tokio 1.53.3. | Subsequent GUI compatibility patches remove all five flagged packages; strict audit passes without suppression. See [dependency remediation](dependencies.md#strict-advisory-remediation--2026-10-17). Native-library review remains open. |
 | N09: admission | Global nonblocking lease plus persistent own-UID admission record, boot identity and monotonic time before key/model/camera work. Reserve 40 seconds for interrupted attempts; successful ordinary cleanup leaves a 3-second cooldown. | Partial: reduces repeated monopolization but is not a fair broker or a population/load measurement. No permanent password/account lockout. |
 | N10: install generation | Retain the existing provisioning lock and ordinary per-file installation rollback. | Open: immutable complete generations and a single crash-safe active switch, including PAM/module/worker and SELinux lifecycle, need a separate deployment migration. |
 | N11: desktop helper deadlines | Start the GUI deadline before detection. Ordinary-user helpers have output caps, bounded pipe EOF/read/wait and dedicated process-group cleanup; detection/post-config are bounded by 10/30 seconds and the remaining whole-operation deadline. | Kernel uninterruptible I/O and root provisioning recovery have separate limits; the user helper supervisor never kills root provisioning. |
@@ -82,6 +82,9 @@ do not copy a default/sudo-only PAM build over the desktop-enabled module.
 Existing unknown/custom sudo-i policies now intentionally fall through to password.
 
 ## Evidence scope
+
+This section records the initial follow-up commit. The later GUI dependency fix
+and its passing strict audit are recorded in [current validation](validation.md#gui-dependency-advisory-remediation--2026-10-17).
 
 [Machine-readable evidence](audit-followup-validation.json) records code hashes
 and per-command counts for this follow-up: default workspace 80 passed / 5 ignored;

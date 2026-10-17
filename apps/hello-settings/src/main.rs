@@ -1458,3 +1458,8 @@ mod diagnostic_tests {
         }
     }
 }
+
+// Test the exact portal transport compiled into the patched Slint backend.
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../../third-party/i-slint-backend-winit/portal.rs"]
+mod portal_regression;

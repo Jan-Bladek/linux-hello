@@ -74,7 +74,7 @@ vulnerability entries. No warning exclusions were introduced. These counts
 describe this run, not a permanent guarantee. Use `cargo tree --workspace
 --all-features --target all -i ttf-parser` to include the GUI in reachability checks.
 
-## Follow-up graph — 2026-10-17
+## Initial follow-up graph — 2026-10-17 (historical)
 
 First-party IPC/daemon/fprintd code now uses pinned zbus 6.0.0 and its integrated
 wire/name types, with explicit Tokio/proxy/service/object-manager features.
@@ -82,11 +82,37 @@ Tokio is pinned to 1.53.3 to meet its minimum patch requirement. Fallible builde
 configuration now reports errors from `build()` per the new API; no caller-supplied
 UID or biometric RPC was added. See [upstream zbus 6 documentation](https://docs.rs/zbus/6.0.0/zbus/).
 
-This **does not clear the strict advisory gate**. Slint 1.18.1's winit backend
+At that commit, this **did not clear the strict advisory gate**. Slint 1.18.1's winit backend
 still brings zbus 5.19.0 / zvariant 5.15.0 / zbus_names 4.3.4 and the old derives.
 The Linux GUI font chain retains ttf-parser 0.25.1, while bincode 2.0.1 remains in
-the cross-platform lockfile. The current strict run reports five unmaintained
+the cross-platform lockfile. That strict run reported five unmaintained
 warnings and zero known vulnerability entries, not an authentication exploit or
 clean bill of health. No ignores, checksums or lock entries were manually removed.
 Maintained GUI/windowing upstream replacements and native-library auditing remain
 open. The [follow-up tracker](audit-remediation-2026-10-17.md) records the scope.
+
+
+## Strict advisory remediation — 2026-10-17
+
+The subsequent GUI dependency fix removes all five flagged packages from the
+resolved lockfile. `cargo audit --deny warnings` passes against the same 1,338
+RustSec advisories with 602 dependencies. No advisory exclusions or CI policy
+relaxations were added. This is a dated dependency result, not a biometric or
+native-library security certification.
+
+Slint 1.18.1 is retained. Its narrowly patched winit backend now uses zbus 6 for
+portal settings, and crossfont for titled Wayland decorations. A small SCTK
+Adwaita compatibility patch selects crossfont 0.9 / fontconfig-sys 6. The build
+pins Slint's compatible typed-index-collections 3.2.0 helper to avoid an unused
+optional bincode dependency introduced in subsequent 3.x releases. Existing
+Fontconfig/FreeType development packages satisfy the native build requirements.
+
+The [patch maintenance record](../third-party/README.md) includes exact upstream
+archive checksums, commits, licensing, changes and retirement instructions.
+Both patched source directories are required by installers and RPM source
+archives; normal `cargo vendor` covers the remaining registry dependencies.
+
+No biometric format, model, threshold, enrollment, PAM interface or desktop
+activation configuration changes. Re-enrollment is not required. The regression
+suite exercises the actual portal transport source against modern and legacy
+mock portals on a private session bus, without a Tokio runtime.

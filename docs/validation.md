@@ -11,13 +11,39 @@
 | KDE unlock | Own-UID launcher and real unprivileged password fallback tested; owner subsequently confirmed Win + L works | No independent unlock latency/accuracy/attack report |
 | Hyprland / Noctalia | Dedicated self-account `login` / `hyprlock` adapters, protocol/rollback/configuration regressions | Physical lock-screen unlock awaits owner confirmation; initial Hyprland sign-in reuses the existing display manager |
 | Software | Recorded default/feature Rust, Python, rendering, worker and privileged isolated-dispatch checks passed at their milestones | Counts below belong to each recorded commit, not one current aggregate |
-| Dependencies | 2026-10-17 follow-up: five maintenance advisories, zero known vulnerability entries; first-party IPC migrated to zbus 6 | Strict gate still fails; Slint/windowing legacy graph and native audit remain open |
+| Dependencies | 2026-10-17 GUI follow-up: strict Cargo audit passes for 602 dependencies / 1,338 advisories; all five flagged packages removed | Local compatibility patches require maintenance; native-library audit remains open |
 | Release qualification | Functional implementation and owner confirmations | Representative NIR FAR/FRR, PAD, independent privilege/key review, broad VM/RPM lifecycle and other desktops remain open |
 
 Current usage and activation are in [scope](index.md), [inference](inference.md),
 [sudo](sudo-integration.md), [KDE](kde-login.md) and
 [Hyprland / Noctalia](hyprland-noctalia.md). This document preserves evidence;
 it is not the installation guide.
+
+## GUI dependency advisory remediation — 2026-10-17
+
+All five maintenance-advisory packages from the initial follow-up were removed
+from the lockfile, using the [reviewed compatibility patches](../third-party/README.md).
+No advisory ignores or CI gate changes were introduced.
+
+| Check | Actual result |
+| --- | --- |
+| `cargo audit --deny warnings` | Passed: 602 dependencies, 1,338 advisories; RustSec database `999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b` |
+| `cargo deny --locked check licenses sources bans` | Passed; duplicate-version and unused-license-allowance warnings remain |
+| Default workspace Rust tests | 81 passed, 6 ignored |
+| Optional camera/CLI/PAM/sudo/GUI tests | 131 passed, 14 ignored; ignored physical/privileged cases were not run |
+| Isolated session-bus suite | 3 passed, including modern/legacy portal reads with nested variants outside Tokio |
+| Default and optional-feature all-target Clippy | Passed with warnings denied |
+| Python tests | 65 passed |
+| Formatting, documentation links and staged whitespace | Passed |
+| Locked workspace release build | Passed |
+| Native Wayland GUI smoke | New release window mapped on Hyprland with software rendering and remained running; no face scan started |
+| Vendored source packaging | Archive created with both local patches; private audit absent; offline locked metadata verified with an empty Cargo home |
+
+These checks do not measure face accuracy or PAD and do not qualify all desktop
+compositors. Native title rendering on other Wayland compositors and distro font
+packages remains deployment-specific. No installed PAM/service/profile state was
+changed and no re-enrollment is required. The previous follow-up evidence below
+remains a historical record of its source revision.
 
 ## Follow-up audit fixes — 2026-10-17
 

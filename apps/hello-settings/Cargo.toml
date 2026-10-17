@@ -22,6 +22,13 @@ hello-cli = { path = "../../crates/hello-cli", version = "=0.1.0-dev", optional 
 
 [build-dependencies]
 slint-build.workspace = true
+# Slint compiler accepts 3.2; later 3.x adds an unused, retired bincode codec.
+# Keep this resolver constraint until the compiler supports a maintained 4.x.
+typed-index-collections = "=3.2.0"
 
 [lints]
 workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+zbus = { workspace = true, features = ["default-rt"] }
+futures = "=0.3.34"

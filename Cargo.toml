@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["third-party/i-slint-backend-winit", "third-party/sctk-adwaita"]
 members = ["crates/*", "apps/hello-settings"]
 default-members = ["crates/hello-core", "crates/hello-camera", "crates/hello-face", "crates/hello-storage", "crates/hello-ipc", "crates/hello-fingerprint", "crates/hello-daemon", "crates/hello-pam", "crates/hello-cli"]
 
@@ -47,3 +48,8 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "unwind"
+
+# Reviewed compatibility patch; see third-party/README.md.
+[patch.crates-io]
+i-slint-backend-winit = { path = "third-party/i-slint-backend-winit" }
+sctk-adwaita = { path = "third-party/sctk-adwaita" }
