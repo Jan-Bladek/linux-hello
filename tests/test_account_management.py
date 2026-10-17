@@ -37,7 +37,7 @@ class AccountManagementTests(unittest.TestCase):
             child_environment=lambda:{'LANG':'C.UTF-8'},child_lock_options=lambda:{},
             protected=lambda p,private=False:p.stat(),atomic_write=lambda p,b,mode:p.write_bytes(b),
             restore_snapshots=lambda snapshots: recovery.restore_snapshots(snapshots, lambda p,b,mode:p.write_bytes(b)))
-        kde=SimpleNamespace(SERVICES=('plasmalogin','sddm'),SUBSTACK='face-substack',MARKER='# kde\n',LINE='auth substack face\n')
+        kde=SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','face-substack','system-auth'),SERVICES=('plasmalogin','sddm'),SUBSTACK='face-substack',MARKER='# kde\n',LINE='auth substack face\n')
         (pam/'sudo').write_text(sudo.MARKER+sudo.LINE)
         for service in ('plasmalogin','kde'): (pam/service).write_text(kde.MARKER+kde.LINE)
         def command(args,**kwargs):

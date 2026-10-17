@@ -97,11 +97,11 @@ def status(account, sudo, kde):
         path = profile / f'pam-{service}.enabled'
         if not present(path): return False
         sudo.protected(path, True)
-        return path.read_bytes() == MAGIC and pam_contains(service, kde.MARKER + kde.LINE)
+        return path.read_bytes() == MAGIC and pam_contains(service, ''.join(kde.layout(service)[:2]))
     return {'version': 1, 'uid': account.pw_uid, 'enrolled': bool(enrolled),
             'sudo': bool(enrolled and not present(profile / 'pam-sudo.disabled') and pam_contains('sudo', sudo.MARKER + sudo.LINE)),
             'login': bool(enrolled and any(opted(service) for service in kde.SERVICES)),
-            'unlock': bool(enrolled and opted('kde')), 'key_backend': backend}
+            'unlock': bool(enrolled and any(opted(service) for service in kde.LOCK_SERVICES)), 'key_backend': backend}
 
 
 def operate(action, account, sudo, kde, acknowledge=None):
@@ -112,9 +112,11 @@ def operate(action, account, sudo, kde, acknowledge=None):
         if acknowledge: acknowledge(result)
         return result
     names = ['key', 'key.tpm', 'template.lht', 'config.json', 'pam-sudo.disabled',
-             'pam-kde.enabled', *[f'pam-{service}.enabled' for service in kde.SERVICES]]
+             *[f'pam-{service}.enabled' for service in (*kde.SERVICES, *kde.LOCK_SERVICES)]]
     paths = [profile / name for name in names]
-    paths += [sudo.PAM, PAM_DIR / 'kde', PAM_DIR / kde.SUBSTACK, *[PAM_DIR / service for service in kde.SERVICES]]
+    paths += [sudo.PAM]
+    for service in (*kde.SERVICES, *kde.LOCK_SERVICES):
+        paths += [PAM_DIR / service, PAM_DIR / kde.layout(service)[2]]
     snapshots = {}
     for path in paths:
         if present(path):
@@ -126,7 +128,7 @@ def operate(action, account, sudo, kde, acknowledge=None):
         sudo.bump_epoch()
         # Disable only this UID. Never globally disable sudo for other accounts.
         sudo.atomic_write(profile / 'pam-sudo.disabled', b'linux-hello-sudo-disabled-v1\n', 0o600)
-        for service in (*kde.SERVICES, 'kde'):
+        for service in (*kde.SERVICES, *kde.LOCK_SERVICES):
             if present(profile / f'pam-{service}.enabled'):
                 subprocess.run(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'disable',
                                 '--user', account.pw_name, '--service', service],

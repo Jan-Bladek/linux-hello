@@ -54,7 +54,7 @@ pub fn check(service: Option<&str>) -> Result<(), Error> {
     let Some(service) = service else {
         return Ok(());
     };
-    let password = if matches!(service, "sudo" | "sudo-i") {
+    let password = if matches!(service, "sudo" | "sudo-i" | "login" | "hyprlock") {
         "system-auth"
     } else {
         "password-auth"
@@ -95,12 +95,17 @@ pub fn check(service: Option<&str>) -> Result<(), Error> {
             return Err("Unsupported sudo auth policy; reactivate the reviewed integration".into());
         }
     } else {
-        let companion = auth_lines(&read_policy("linuxhello-kde-auth")?);
+        let (companion_name, fallback) = match service {
+            "login" => ("linuxhello-login-auth", "system-auth"),
+            "hyprlock" => ("linuxhello-hyprlock-auth", "system-auth"),
+            _ => ("linuxhello-kde-auth", "password-auth"),
+        };
+        let companion = auth_lines(&read_policy(companion_name)?);
         let expected = vec![
             PREAUTH[0].into(),
             PREAUTH[1].into(),
             face,
-            "auth substack password-auth".into(),
+            format!("auth substack {fallback}"),
         ];
         let diagnostic_expected = vec![
             PREAUTH[0].into(),
@@ -109,12 +114,14 @@ pub fn check(service: Option<&str>) -> Result<(), Error> {
                 "auth sufficient {} diagnostic",
                 "/usr/lib64/security/pam_linuxhello.so"
             ),
-            "auth substack password-auth".into(),
+            format!("auth substack {fallback}"),
         ];
-        if !lines.contains(&"auth substack linuxhello-kde-auth".into())
+        if !lines.contains(&format!("auth substack {companion_name}"))
             || (companion != expected && companion != diagnostic_expected)
         {
-            return Err("Unsupported KDE auth policy; reactivate the reviewed integration".into());
+            return Err(
+                "Unsupported desktop auth policy; reactivate the reviewed integration".into(),
+            );
         }
     }
     Ok(())

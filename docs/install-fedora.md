@@ -15,7 +15,7 @@ and package removal/upgrade qualification remain separate work.
   [tested hardware](hardware-support.md), not every camera advertised as infrared.
 
 The installer does not support Fedora Atomic/ostree or Debian/Ubuntu. Sign-in and
-screen unlock integrate with KDE; on another desktop select only supported uses.
+screen unlock support KDE and [Hyprland / Noctalia / Hyprlock](hyprland-noctalia.md); select only the uses you need.
 Representative NIR FAR/FRR and reviewed PAD qualification remain open. Keep your
 password available.
 
@@ -63,7 +63,7 @@ Open **Linux Hello** from KDE's menu or run:
 linux-hello
 ```
 
-Scan your face, name it, select **Sudo**, **KDE sign-in** and/or **Screen unlock**,
+Scan your face, name it, select **Sudo**, **Desktop sign-in** and/or **Screen unlock**,
 then **Save and set up**. Choose a separate reference passphrase of at least 12
 characters and confirm it. For an existing encrypted reference, use its original
 passphrase. The separate system authorization dialog uses your Linux account
@@ -151,3 +151,6 @@ After an audit-remediation upgrade, explicitly reactivate existing PAM
 integrations to migrate their known managed blocks. Unknown MFA/access/lockout
 policies are refused. The old partial sudo/KDE install scripts are retired.
 See [audit remediation](audit-remediation.md#recovery-and-upgrade).
+
+For Noctalia 5.x or Hyprlock session unlocking, see
+[Hyprland and Noctalia activation](hyprland-noctalia.md).

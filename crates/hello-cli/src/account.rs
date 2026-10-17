@@ -23,7 +23,7 @@ impl Status {
     pub fn summary(&self) -> String {
         let state = |active| if active { "enabled" } else { "disabled" };
         format!(
-            "System reference: {} · sudo: {} · KDE sign-in: {} · screen unlock: {} · key: {}",
+            "System reference: {} · sudo: {} · Desktop sign-in: {} · screen unlock: {} · key: {}",
             if self.enrolled {
                 "configured"
             } else {

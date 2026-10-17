@@ -44,7 +44,7 @@ class PersonSetup(unittest.TestCase):
             for path, contents in old.items(): path.write_bytes(contents)
             def atomic(path, data, mode): path.write_bytes(data)
             sudo = SimpleNamespace(bump_epoch=lambda:None,ROOT=state, PAM=pam/'sudo', protected=lambda path, private=False: path.stat(), atomic_write=atomic, restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,atomic))
-            kde = SimpleNamespace(SUBSTACK='linuxhello-kde-auth', SERVICES=('plasmalogin','sddm'), detect=lambda:'plasmalogin')
+            kde = SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','linuxhello-'+service+'-auth','system-auth'),SUBSTACK='linuxhello-kde-auth', SERVICES=('plasmalogin','sddm'), detect=lambda:'plasmalogin')
             def failing(args, secret=None):
                 if 'enroll-stdin' in args:
                     (profile/'key').write_bytes(b'new-key')
@@ -65,7 +65,7 @@ class PersonSetup(unittest.TestCase):
             root=Path(folder);state=root/'state';state.mkdir();pam=root/'pam';pam.mkdir()
             (state/'.anchor').write_bytes(b'');(pam/'sudo').write_bytes(b'other-users-still-enabled')
             sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),atomic_write=lambda p,d,mode:p.write_bytes(d),restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,lambda p,b,mode:p.write_bytes(b)))
-            kde=SimpleNamespace(SUBSTACK='linuxhello-kde-auth',SERVICES=('plasmalogin','sddm'))
+            kde=SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','linuxhello-'+service+'-auth','system-auth'),SUBSTACK='linuxhello-kde-auth',SERVICES=('plasmalogin','sddm'))
             calls=[]
             with patch.object(m,'PAM_DIR',pam),patch.object(m,'profile_is_private',return_value=True),patch.object(m,'command',side_effect=lambda args,secret=None:calls.append(args)),patch.object(m,'progress'),patch.object(m,'complete'):
                 result=m.configure({'sudo':False,'login':False,'unlock':False,'source':'/unused'},bytearray(),SimpleNamespace(pw_uid=1000,pw_name='owner'),sudo,kde)

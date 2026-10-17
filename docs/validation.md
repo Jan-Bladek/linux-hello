@@ -1,6 +1,6 @@
 # Executed validation
 
-## Current evidence summary — reviewed 2026-10-13
+## Current evidence summary — reviewed 2026-10-17
 
 | Area | Latest recorded evidence | Remaining limitation |
 | --- | --- | --- |
@@ -9,13 +9,47 @@
 | sudo | Real owner match and original password fallback tested; protected UID reference and fixed verifier installed | Explicit experimental opt-in; no validated PAD |
 | KDE login | Owner activation minima0.868/0.880 and AUTH/ACCT/SETCRED0; owner subsequently reported real login works | Plasma Login Manager confirmed; actual SDDM login not measured here |
 | KDE unlock | Own-UID launcher and real unprivileged password fallback tested; owner subsequently confirmed Win + L works | No independent unlock latency/accuracy/attack report |
+| Hyprland / Noctalia | Dedicated self-account `login` / `hyprlock` adapters, protocol/rollback/configuration regressions | Physical lock-screen unlock awaits owner confirmation; initial Hyprland sign-in reuses the existing display manager |
 | Software | Recorded default/feature Rust, Python, rendering, worker and privileged isolated-dispatch checks passed at their milestones | Counts below belong to each recorded commit, not one current aggregate |
 | Dependencies | Recorded audit snapshots have two unmaintained-dependency advisories and fail the strict gate | No fresh audit result is inferred from those snapshots |
 | Release qualification | Functional implementation and owner confirmations | Representative NIR FAR/FRR, PAD, independent privilege/key review, broad VM/RPM lifecycle and other desktops remain open |
 
 Current usage and activation are in [scope](index.md), [inference](inference.md),
-[sudo](sudo-integration.md) and [KDE](kde-login.md). This document preserves evidence;
+[sudo](sudo-integration.md), [KDE](kde-login.md) and
+[Hyprland / Noctalia](hyprland-noctalia.md). This document preserves evidence;
 it is not the installation guide.
+
+## Hyprland / Noctalia / Hyprlock support — 2026-10-17
+
+Inspected the running Fedora 44 Hyprland / Noctalia 5.3.0 environment and reviewed
+Noctalia source commit `3982122906f2409aeaff17399552153c4c323f20` plus official
+Hyprlock documentation. Noctalia 5 uses unprivileged `login` PAM, not the old
+Quickshell `system-login` service. Added whitelist-bound own-UID launcher routing,
+independent markers and service-specific password companions without enabling
+root TTY face login or editing shared authselect stacks. Existing PlasmaLogin
+continues to select the Hyprland session. GUI setup selects the running locker;
+account pause/remove now revokes every supported locker. The unprivileged
+Noctalia overlay permits empty-submit PAM initiation without changing lock/grace
+policy and detects later settings overrides.
+
+Executed default workspace tests (79 passed, 5 restricted/hardware entries ignored),
+optional camera/CLI/GUI/PAM/helper tests (127 passed, 11 ignored), both Clippy
+configurations with warnings denied, formatting and 54 Python tests. Added exact
+PAM round-trip/shared-account rollback coverage and Noctalia configuration conflict
+regressions. Ignored entries are not physical camera, TPM or biometric evidence.
+New locker support does not imply measured FAR/FRR or validated PAD.
+
+Installed the complete updated bundle using the full offline Fedora source
+installer with the existing TPM policy. Installed scripts, PAM module and launcher
+matched source/build hashes; SELinux remained Enforcing. The actual installed
+PAM module and setuid launcher passed private-namespace dispatch tests for both
+new services: own-UID success, missing/corrupt independent opt-in rejection,
+root TTY rejection, original parent/account/setcred success and verifier mismatch.
+Synthetic helper exits tested dispatch only; production PAM/templates were not
+replaced by fixtures. Also exercised actual Noctalia 5.3.0 config parsing in a
+temporary XDG home: the overlay enabled empty-submit while locking stayed enabled,
+without changing running-session settings. Physical owner scans and locked-screen
+unlock for these new adapters remain pending; use the activation tool deliberately.
 
 ## English UI and self-account management — 2026-10-13
 

@@ -33,13 +33,14 @@ has UID-bound template/config/key files; unprivileged local-only GUI edits canno
 
 A live verification confirms the import. sudo activation requires another match,
 backs up the original service file and preserves the original password stack.
-KDE login and unlock have independent `pam-SERVICE.enabled` markers and two live
+Desktop sign-in and supported lockers have independent `pam-SERVICE.enabled` markers and two live
 pre-activation tests; they reuse the protected reference. See [sudo](sudo-integration.md)
-and [KDE](kde-login.md) for exact commands, permissions and rollback.
+[KDE](kde-login.md) and [Hyprland / Noctalia](hyprland-noctalia.md) for exact
+commands, permissions and rollback.
 
 ## Unified GUI configuration
 
-After scan/name, the user chooses sudo, KDE login and unlock. Explicit **Save and set up** saves the GUI reference and launches the fixed installed setup
+After scan/name, the user chooses sudo, desktop sign-in and screen unlock. Explicit **Save and set up** saves the GUI reference and launches the fixed installed setup
 helper via pkexec. A bounded private stdin pipe carries choices/source directory
 and the reference passphrase, not the account password or biometric vectors.
 The helper derives the subject UID from pkexec, authorizes no alternate target,
@@ -56,7 +57,7 @@ flowchart TD
   PAM[PAM_SERVICE and PAM_USER] --> Scope[Check service, caller and account scope]
   Scope --> Route{Supported caller}
   Route -->|sudo or root display manager| Helper[Fixed root-owned verifier]
-  Route -->|kde and own real UID| Launcher[Self-only setuid launcher]
+  Route -->|supported locker and own real UID| Launcher[Self-only setuid launcher]
   Launcher --> Helper
   Helper --> Preflight[Protected UID template, config, pinned models and sensor binding]
   Preflight --> Capture[Bounded camera and isolated worker]
@@ -88,8 +89,10 @@ overridden. Account/session policy is still controlled by the host and calling
 application; KScreenLocker checks authentication and refreshes credentials rather
 than opening a new desktop session. KWallet may separately need its password.
 
-Only `sudo`, `sudo-i`, `plasmalogin`, `sddm` and `kde` are integrated. GDM, tty
-login, sshd, su, Polkit and other lockers remain outside scope. Default installation
+Integrated PAM services are `sudo`, `sudo-i`, `plasmalogin`, `sddm`, `kde`,
+`hyprlock` and self-account Noctalia `login`. GDM, greetd/Noctalia Greeter, root
+TTY login, sshd, su and Polkit remain outside scope. Self-account Noctalia 5.x
+`login` and Hyprlock support is described in [desktop unlocking](hyprland-noctalia.md). Default installation
 never edits production PAM or authselect. Explicit activation does edit the named
 service after its checks. Disk encryption and encrypted-home unlock are unchanged.
 

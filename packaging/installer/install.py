@@ -21,7 +21,7 @@ PACKAGES = ['git', 'gcc', 'gcc-c++', 'clang-devel', 'pkgconf-pkg-config', 'openc
             'selinux-policy-devel']
 BINS = ['hello', 'hello-settings', 'hello-face-worker', 'hello-sudo', 'hello-lock-verify']
 SCRIPTS = {'sudo': ['manage.py', 'enroll-and-enable.sh'],
-           'kde': ['manage-kde.py', 'activate-kde.sh', 'activate-lock.sh', 'configure-person.py', 'manage-person.py']}
+           'kde': ['manage-kde.py', 'activate-kde.sh', 'activate-lock.sh', 'activate-desktop.py', 'configure-person.py', 'manage-person.py']}
 
 
 def run(args, **kwargs):
@@ -136,7 +136,7 @@ def main():
     os.umask(0o077)
     fedora()
     if Path('/run/ostree-booted').exists(): raise RuntimeError('This installer does not support Fedora Atomic/ostree.')
-    print('Linux Hello — full Fedora installation\nBuild: Rust 1.99.0, GUI, YuNet/SFace, sudo and KDE.\nInstallation does not activate PAM or modify enrolled references.')
+    print('Linux Hello — full Fedora installation\nBuild: Rust 1.99.0, GUI, YuNet/SFace, sudo and desktop PAM.\nInstallation does not activate PAM or modify enrolled references.')
     if args.offline and not args.skip_deps: raise RuntimeError('--offline requires --skip-deps so dnf does not access the network.')
     if args.dry_run:
         print('1. Dependencies: ' + ('skipped' if args.skip_deps else 'dnf install ' + ' '.join(PACKAGES) + ' curl/curl-minimal'))
@@ -171,7 +171,7 @@ def main():
             return
         run(['/usr/bin/sudo', '/usr/bin/python3', '-B', REPO / 'packaging/installer/install-root.py', stage])
     desktop()
-    print('Ready! Open Linux Hello from the KDE menu or run linux-hello.\nScan → name → select uses → Save and set up.\nUse a separate reference passphrase; system authorization uses your account password.')
+    print('Ready! Open Linux Hello from your application launcher or run linux-hello.\nScan → name → select uses → Save and set up.\nUse a separate reference passphrase; system authorization uses your account password.')
     if args.with_tpm: print('After saving and activating a reference: sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-enable ' + str(os.getuid()))
 
 

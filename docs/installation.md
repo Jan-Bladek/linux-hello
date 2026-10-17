@@ -237,3 +237,6 @@ manual activation is needed for the selected uses after the GUI live checks pass
 See [unified setup](kde-login.md#unified-gui-setup). The developer switch exposes
 local-only saving and advanced tools. Existing script-based activation/rollback
 remains available. Replacing a face preserves a stricter existing root threshold.
+
+For Noctalia 5.x or Hyprlock session unlocking, see
+[Hyprland and Noctalia activation](hyprland-noctalia.md).

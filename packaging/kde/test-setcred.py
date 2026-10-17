@@ -59,7 +59,7 @@ def main():
         conf=tmp/'conf';conf.mkdir()
         (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
         fixture=tmp/'fixture.c'
-        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==4&&(!strcmp(v[1],"verify-service")||!strcmp(v[1],"diagnose-service"))&&(!strcmp(v[3],"sudo")||!strcmp(v[3],"sudo-i")||!strcmp(v[3],"kde")||!strcmp(v[3],"plasmalogin")||!strcmp(v[3],"sddm"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
+        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==4&&(!strcmp(v[1],"verify-service")||!strcmp(v[1],"diagnose-service"))&&(!strcmp(v[3],"sudo")||!strcmp(v[3],"sudo-i")||!strcmp(v[3],"kde")||!strcmp(v[3],"login")||!strcmp(v[3],"hyprlock")||!strcmp(v[3],"plasmalogin")||!strcmp(v[3],"sddm"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
         good=tmp/'matched';bad=tmp/'rejected'
         for file,exitcode in [(good,0),(bad,1)]:
             subprocess.run(['/usr/bin/cc','-Wall','-Wextra','-Werror','-O2',f'-DOUTCOME={exitcode}',f'-DEXPECTED_UID="{uid}"','-o',str(file),str(fixture)],check=True)
@@ -126,6 +126,28 @@ def main():
             gid=pwd.getpwnam(user).pw_gid
             lock_command=['/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid),'--init-groups',str(probe),'kde',user,str(conf)]
             assert subprocess.run(lock_command,timeout=10).returncode==0,'unprivileged locker must verify only its own account via the setuid launcher'
+            for service in ('login', 'hyprlock'):
+                marker = profile / f'pam-{service}.enabled'
+                marker.write_text('linux-hello-login-v1\n')
+                # Explicit deny fallback: a successful test must come from the
+                # real module/launcher, never a password or pam_permit fixture.
+                (conf/service).write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
+                (conf/service).chmod(0o644)
+                desktop_command = lock_command[:]
+                desktop_command[-3] = service
+                assert subprocess.run(desktop_command, timeout=10).returncode == 0, f'{service}: own unprivileged account can verify'
+                root_command = [str(probe), service, user, str(conf)]
+                assert subprocess.run(root_command, timeout=10).returncode != 0, f'{service}: root TTY/login must not use biometrics'
+                marker.unlink()
+                assert subprocess.run(desktop_command, timeout=10).returncode != 0, f'{service}: separate opt-in required despite KDE opt-in'
+                marker.write_text('corrupt\n')
+                assert subprocess.run(desktop_command, timeout=10).returncode != 0, f'{service}: corrupt marker rejects'
+                marker.write_text('linux-hello-login-v1\n')
+                original_login = Path('/etc/pam.d/login').read_text() if service == 'login' else m.LOCKER_DEFAULT
+                (conf/service).write_text(m.changed(original_login, True, service))
+                (conf/m.layout(service)[2]).write_text(m.auth_stack(service))
+                (conf/m.layout(service)[2]).chmod(0o644)
+                assert subprocess.run(desktop_command, timeout=10).returncode == 0, f'{service}: real parent/account/credential stack preserved'
             launch=['/usr/bin/setpriv','--reuid',str(uid),'--regid',str(gid),'--init-groups',str(BASE/'hello-lock-verify')]
             assert subprocess.run(launch+['verify',str(uid)],timeout=10).returncode!=0,'launcher must reject all supplied commands and target IDs'
             assert subprocess.run([str(BASE/'hello-lock-verify')],timeout=10).returncode!=0,'root/system real UID must not use the launcher'
@@ -145,6 +167,11 @@ def main():
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/mount','--bind',str(bad),str(BASE/'hello-sudo')],check=True)
             assert subprocess.run(lock_command,timeout=10).returncode!=0,'unprivileged locker mismatch must reject'
+            for service in ('login', 'hyprlock'):
+                desktop_command = lock_command[:]; desktop_command[-3] = service
+                (conf/service).write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
+                assert subprocess.run(desktop_command, timeout=10).returncode != 0, f'{service}: mismatch rejects'
+
             assert subprocess.run(command,timeout=10).returncode!=0,'rejected verifier must not authenticate'
             (conf/m.SUBSTACK).write_bytes(m.diagnostic_stack(m.AUTH_STACK.encode()))
             assert subprocess.run(command,timeout=10).returncode!=0,'diagnostic rejection must retain the password fallback'

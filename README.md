@@ -2,7 +2,7 @@
 
 Linux Hello is a Rust application for local facial enrollment and verification on
 Fedora Linux. It includes a Slint GUI, V4L2 camera diagnostics and optional PAM
-integrations for sudo, KDE login and unlocking after Win + L.
+integrations for sudo, desktop sign-in, KDE, Hyprlock and Noctalia unlocking.
 
 **Development release: presentation attack detection (PAD) and representative
 infrared FAR/FRR are not validated. Password fallback remains available.**
@@ -21,7 +21,8 @@ repository. No cloud processing or runtime model download is required.
 | Verification | Three distinct suitable frames, centroid/exemplar/geometry checks, provisional minimum cosine threshold 0.80 | No mandatory head turns; no validated PAD or calibrated FAR/FRR |
 | sudo | Protected root-owned reference, UID-bound verifier, original password fallback | Separate experimental opt-in |
 | KDE login | Plasma Login Manager/SDDM PAM integration with independent account/service opt-in | Owner confirmed real Plasma login; SDDM is implemented but not physically validated here |
-| KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE; other lockers are not integrated |
+| KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE |
+| Hyprland / Noctalia unlock | Self-account Hyprlock and Noctalia 5.x PAM adapters with independent opt-in | Implemented; see [activation and validation scope](docs/hyprland-noctalia.md) |
 | Account management | Authorized self-account status, pause and confirmed reference removal in GUI/CLI | Metadata status does not perform live verification |
 | Installation health | Metadata-only GUI/CLI report with pinned model checks | Not an authentication or PAD result |
 | Diagnostic daemon | Read-only D-Bus status and bus-derived requester UID | No enrollment or authentication authority |
@@ -86,7 +87,7 @@ worker limits are in [inference](docs/inference.md).
 3. Enter a name and choose **Name this face**. The name is a local label.
 4. Choose **Scan and recognize** and look straight at the camera. Three suitable
    matching frames are required; normal verification does not require head turns.
-5. After naming, Settings opens with three cards: **Sudo**, **KDE sign-in**
+5. After naming, Settings opens with three cards: **Sudo**, **Desktop sign-in**
    and **Screen unlock**. Choose the uses, enter a separate reference passphrase
    twice and select **Save and set up**. A system Polkit prompt authorizes
    protected import and the selected live PAM checks in one guided operation.
@@ -150,6 +151,8 @@ Run these installed scripts as the normal desktop user:
 /usr/local/libexec/linux-hello-sudo/activate-kde.sh
 # Enable KDE session unlocking after Win + L:
 /usr/local/libexec/linux-hello-sudo/activate-lock.sh
+# Enable Noctalia / Hyprlock screen unlocking (auto-detected):
+/usr/local/libexec/linux-hello-sudo/activate-desktop.py
 ```
 
 The scripts are available only after the corresponding manual installation.
@@ -160,8 +163,10 @@ the camera. For Win + L, show the unlock screen; if scanning does not start,
 submit the empty field. Password fallback remains available. KWallet can request
 its own password. See [KDE installation, activation and rollback](docs/kde-login.md).
 
-The supported PAM services are `sudo`, `sudo-i`, `plasmalogin`, `sddm` and `kde`.
-GDM, sshd, su, tty login, Polkit agents and other lockers are not integrated.
+Supported PAM services are `sudo`, `sudo-i`, `plasmalogin`, `sddm`, `kde`,
+`hyprlock` and self-account `login` for Noctalia 5.x. Root TTY login remains on
+its original policy. GDM, greetd/Noctalia Greeter, sshd, su and Polkit agents
+are not integrated. See [Hyprland and Noctalia](docs/hyprland-noctalia.md).
 The diagnostic daemon's disabled readiness flags do not report the activation
 state of the separate experimental PAM adapters.
 

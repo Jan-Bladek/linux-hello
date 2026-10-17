@@ -26,7 +26,17 @@ pub fn configure(
     if !(12..=1024).contains(&password.len()) {
         return Err("Invalid reference passphrase length.".into());
     }
-    let metadata = serde_json::json!({"source":source,"sudo":choices[0],"login":choices[1],"unlock":choices[2]});
+    let desktop_helper = "/usr/local/libexec/linux-hello-sudo/activate-desktop.py";
+    let detected = Command::new("/usr/bin/python3")
+        .args(["-B", desktop_helper, "--detect"])
+        .output()
+        .map_err(|_| "Cannot detect the desktop locker; check the installation.")?;
+    let locker = String::from_utf8_lossy(&detected.stdout);
+    let locker = locker.trim();
+    if !detected.status.success() || !matches!(locker, "kde" | "hyprlock" | "login") {
+        return Err("Cannot detect a supported desktop locker.".into());
+    }
+    let metadata = serde_json::json!({"source":source,"sudo":choices[0],"login":choices[1],"unlock":choices[2],"unlock_service":locker});
     let started = Instant::now();
     let deadline = started + Duration::from_secs(300);
     let mut child = Command::new("/usr/bin/pkexec")
@@ -122,6 +132,17 @@ pub fn configure(
     };
     let (configured, message) = reader.join().map_err(|_| "Cannot read the setup result.")?;
     if status.is_some_and(|s| s.success()) && configured {
+        if choices[2] && locker == "login" {
+            let result = Command::new("/usr/bin/python3")
+                .args(["-B", desktop_helper, "--configure-noctalia"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|_| "Face configured. Enable Allow empty password in Noctalia Security settings to start face verification with Enter.")?;
+            if !result.success() {
+                return Ok("Face configured. Enable Allow empty password in Noctalia Security settings to start face verification with Enter.".into());
+            }
+        }
         Ok("Face saved and configured for the selected uses.".into())
     } else {
         Err(if message.is_empty() {

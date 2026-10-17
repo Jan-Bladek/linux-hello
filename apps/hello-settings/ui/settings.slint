@@ -250,8 +250,8 @@ export component SettingsWindow inherits Window {
                         HorizontalBox {
                             spacing: 10px;
                             UseCard { heading: "Sudo"; description: "Authorize commands that require elevated privileges."; checked <=> root.use-for-sudo; option-enabled: !root.face-check-running; }
-                            UseCard { heading: "KDE sign-in"; description: "Sign in to your account after starting the computer."; checked <=> root.use-for-login; option-enabled: !root.face-check-running; }
-                            UseCard { heading: "Screen unlock"; description: "Return to your session after pressing Win + L."; checked <=> root.use-for-unlock; option-enabled: !root.face-check-running; }
+                            UseCard { heading: "Desktop sign-in"; description: "Sign in to your account after starting the computer."; checked <=> root.use-for-login; option-enabled: !root.face-check-running; }
+                            UseCard { heading: "Screen unlock"; description: "KDE, Hyprland / Hyprlock, or Noctalia."; checked <=> root.use-for-unlock; option-enabled: !root.face-check-running; }
                         }
                         Text { text: root.system-message; wrap: word-wrap; color: root.system-configured ? #188357 : Palette.foreground; }
                     } }

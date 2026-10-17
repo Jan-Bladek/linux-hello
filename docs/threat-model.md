@@ -112,10 +112,13 @@ its random key live together in a root-private profile: this prevents ordinary
 users from reading/modifying them but does not protect against root or an offline
 disk attacker. Root verification checks fixed, non-writable root-owned ancestors;
 store paths, models and target identity are not selected by GUI input. The locker
-launcher takes no arguments and derives the only target from kernel real UID.
+launcher accepts only a whitelisted locker service and derives the only target
+from kernel real UID; legacy no-argument KDE calls remain supported. Noctalia
+uses `login` only for a normal self-account caller; root TTY login is excluded.
 It executes only the fixed verifier and exposes no enrollment or export API.
 The separate GUI setup helper runs through pkexec, derives its subject from
-PKEXEC_UID/NSS and accepts no alternate UID or service name. It validates installed
+PKEXEC_UID/NSS and accepts no alternate UID. An optional bounded locker-service
+selection uses a fixed whitelist and still requires real root-managed checks. It validates installed
 code before importing it, serializes setup, imports a private encrypted own-account
 reference and uses the existing live verification/activation managers. Normal
 errors and broken result pipes restore previous profile/PAM files. Hard kill or

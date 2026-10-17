@@ -75,12 +75,14 @@ def request(input):
     if len(line) > 4096 or not line.endswith(b'\n'):
         raise ValueError('Invalid setup request')
     data = json.loads(line)
-    if set(data) != {'sudo', 'login', 'unlock', 'source'}:
+    if set(data) not in ({'sudo', 'login', 'unlock', 'source'}, {'sudo', 'login', 'unlock', 'source', 'unlock_service'}):
         raise ValueError('Unexpected setup fields')
     if any(type(data[key]) is not bool for key in ('sudo', 'login', 'unlock')):
         raise ValueError('Invalid selection')
     if not isinstance(data['source'], str) or not Path(data['source']).is_absolute():
         raise ValueError('Absolute reference directory required')
+    if data.get('unlock_service', 'kde') not in ('kde', 'hyprlock', 'login'):
+        raise ValueError('Unsupported screen locker')
     length = struct.unpack('!H', input.read(2))[0]
     if not 12 <= length <= 1024:
         raise ValueError('Invalid secret length')
@@ -121,11 +123,13 @@ def configure(data, secret, account, sudo, kde):
     service = kde.detect() if data['login'] else None
     profile = sudo.ROOT / str(uid)
     sudo.protected(sudo.ROOT / '.anchor', True)
+    lockers = kde.LOCK_SERVICES
     paths = [profile / name for name in ('key', 'key.tpm', 'template.lht', 'config.json',
-             'pam-sudo.disabled', 'pam-kde.enabled', '.config-pending')]
-    paths += [sudo.PAM, PAM_DIR / 'kde', PAM_DIR / kde.SUBSTACK]
-    for candidate in kde.SERVICES:
-        paths += [profile / f'pam-{candidate}.enabled', PAM_DIR / candidate]
+             'pam-sudo.disabled', '.config-pending')]
+    paths += [sudo.PAM]
+    for candidate in (*kde.SERVICES, *lockers):
+        paths += [profile / f'pam-{candidate}.enabled', PAM_DIR / candidate,
+                  PAM_DIR / kde.layout(candidate)[2]]
     # Protected encrypted files are held in memory only for rollback, not exported
     # or logged. Profile keys/templates remain root-private throughout.
     snapshots = {}
@@ -155,7 +159,7 @@ def configure(data, secret, account, sudo, kde):
         else:
             sudo.atomic_write(profile / 'pam-sudo.disabled', b'linux-hello-sudo-disabled-v1\n', 0o600)
         if service:
-            progress('Checking KDE sign-in. Look straight ahead for two short checks.')
+            progress('Checking desktop sign-in. Look straight ahead for two short checks.')
             command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'enable', '--user', account.pw_name, '--service', service])
         else:
             # Disable own display-manager opt-in without changing other accounts.
@@ -163,9 +167,11 @@ def configure(data, secret, account, sudo, kde):
                 if (profile / f'pam-{candidate}.enabled').exists():
                     command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'), 'disable', '--user', account.pw_name, '--service', candidate])
         progress('Checking screen unlock.' if data['unlock'] else 'Disabling face unlock for this account.')
-        if data['unlock'] or (profile / 'pam-kde.enabled').exists():
-            command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'),
-                     'enable' if data['unlock'] else 'disable', '--user', account.pw_name, '--service', 'kde'])
+        selected = data.get('unlock_service', 'kde')
+        for candidate in lockers:
+            if (data['unlock'] and candidate == selected) or (not data['unlock'] and (profile / f'pam-{candidate}.enabled').exists()):
+                command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'),
+                         'enable' if data['unlock'] else 'disable', '--user', account.pw_name, '--service', candidate])
         result = {'sudo': data['sudo'], 'login': data['login'], 'unlock': data['unlock']}
         complete(result)
         return result

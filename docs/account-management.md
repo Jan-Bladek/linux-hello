@@ -34,7 +34,7 @@ Select **Pause face authentication**, or:
 hello account pause
 ```
 
-This disables sudo, KDE sign-in and KDE unlock for the authorized account while
+This disables sudo, desktop sign-in and all supported screen lockers for the authorized account while
 retaining its protected reference and key. The original password path remains
 available. Other accounts' opt-ins are preserved; sudo is disabled with the
 existing per-UID marker, not a global PAM edit. Pause does not delete the encrypted
@@ -93,3 +93,6 @@ The doctor performs no enrollment, PAM edits, network calls or raw-image snapsho
 Status now validates the protected key/configuration/template and pinned model
 hashes without camera capture. It does not confirm PAD, boot integrity or actual
 recognition. See [audit remediation](audit-remediation.md).
+
+For Noctalia 5.x or Hyprlock session unlocking, see
+[Hyprland and Noctalia activation](hyprland-noctalia.md).

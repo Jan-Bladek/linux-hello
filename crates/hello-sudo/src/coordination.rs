@@ -86,7 +86,7 @@ pub(super) fn activation_allowed(uid: u32, service: Option<&str>) -> Result<(), 
                 _ => Err("Face authentication disabled".into()),
             }
         }
-        Some(service @ ("kde" | "plasmalogin" | "sddm")) => {
+        Some(service @ ("kde" | "hyprlock" | "login" | "plasmalogin" | "sddm")) => {
             let mut bytes = Vec::new();
             protected_file(
                 &directory(uid).join(format!("pam-{service}.enabled")),

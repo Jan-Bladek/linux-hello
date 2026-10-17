@@ -1,6 +1,6 @@
 # Documentation guide
 
-Current implementation summary, reviewed against the repository on 2026-10-13.
+Current implementation summary, reviewed against the repository on 2026-10-17.
 This is a development release with explicit experimental authentication, not a
 security-qualified biometric product.
 
@@ -13,7 +13,7 @@ security-qualified biometric product.
 | PAM reference | A separately imported, encrypted root-owned UID-bound template; local-only edits do not update it; authorized unified setup does |
 | Verification | Three fresh suitable frames compared only with the claimed account's reference; no normal head-turn challenge |
 | Enrollment | Eight accepted frames with quality/consistency checks; new scans produce V2 templates |
-| Experimental authentication | Explicit opt-in for sudo, KDE login or KDE unlock; errors fall through to the original password path |
+| Experimental authentication | Explicit opt-in for sudo, desktop sign-in or supported screen unlock; errors fall through to the original password path |
 | Qualified security | Not achieved: representative NIR FAR/FRR, validated PAD, independent review and deployment qualification remain outstanding |
 
 | Integration | PAM services | Caller binding | Manual activation |
@@ -21,6 +21,7 @@ security-qualified biometric product.
 | sudo | `sudo`, `sudo-i` | Claimed UID matches caller; trusted PAM_RUSER when sudo's real UID is root | `enroll-and-enable.sh` |
 | KDE login | `plasmalogin`, `sddm` | Root display-manager helper and protected per-account/service opt-in | `activate-kde.sh` |
 | KDE unlock | `kde` | Claimed UID equals kernel real caller UID; self-only setuid launcher | `activate-lock.sh` |
+| Noctalia 5.x / Hyprlock | `login` / `hyprlock` | Claimed UID equals normal real caller UID; independent root-private opt-in | `activate-desktop.py` |
 
 The current pipeline uses YuNet + SFace + OpenCV DNN, not SCRFD/ArcFace/ONNX
 Runtime. Five landmarks are not depth or validated anti-spoofing. The threshold
@@ -41,6 +42,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 - [Inference](inference.md): exact model hashes, preprocessing, quality, lifecycle and GUI usage.
 - [Sudo integration](sudo-integration.md): protected provisioning, authentication, diagnostics and rollback.
 - [Optional TPM protection](tpm.md): root profile key wrapping, explicit migration, limits and hardware tests.
+- [Hyprland, Noctalia and Hyprlock](hyprland-noctalia.md): session login, screen unlock, activation and rollback.
 - [KDE integration](kde-login.md): display-manager login and Win + L, each with separate activation.
 - [Architecture](architecture.md) and [authentication flow](authentication-flow.md): implemented authority and data paths.
 - [Biometrics](biometrics.md) and [threat model](threat-model.md): template handling, security controls and remaining qualification.

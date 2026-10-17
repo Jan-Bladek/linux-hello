@@ -13,8 +13,9 @@ its absence does not mean the display manager lacks PAM configuration. The
 manager detects the active systemd display manager and refuses unrelated service
 names. Screen locking (`kde`) has a separate explicit opt-in described below.
 Fingerprint locking (`kde-fingerprint`), greeter accounts, autologin,
-login/sshd/su and authselect's system-auth/password-auth are not enabled by this
-integration. The existing running desktop is never stopped/restarted by the
+TTY login/sshd/su and authselect's system-auth/password-auth are not enabled by this
+integration. [Hyprland / Noctalia / Hyprlock](hyprland-noctalia.md) use separate
+self-account locker opt-ins. The existing running desktop is never stopped/restarted by the
 installer or activation tool.
 
 ## Build and install
@@ -39,20 +40,15 @@ the exact version1 contents, inside the protected UID directory. Missing,
 malformed, linked or writable markers cannot enable face authentication.
 
 ```sh
-cargo build --release --locked -p hello-pam --features kde-pam \
-  -p hello-sudo --features sudo-face
-mkdir -p work/kde
-cc -Wall -Wextra -Werror -O2 -D_FORTIFY_SOURCE=3 -fstack-protector-strong \
-  -Wl,-z,relro,-z,now -o work/kde/kde-pam-probe \
-  packaging/kde/pam-probe.c -Wl,-l:libpam.so.0
-checkmodule -M -m -o work/kde/linuxhello_kde.mod packaging/kde/linuxhello_kde.te
-semodule_package -o work/kde/linuxhello_kde.pp -m work/kde/linuxhello_kde.mod
-sudo bash packaging/kde/install.sh "$PWD"
+./install.sh --with-tpm
 ```
 
-The updated helper must also be installed (the KDE installer installs it). The
+Use the complete installer as the normal user; historical partial installers
+are retired to avoid incompatible PAM feature sets and mixed helper versions.
+
+The full installer includes the updated helper. The
 probe is an ordinary executable without setuid/capabilities. Display-manager
-checks require root; the special `kde` mode permits only its own normal real UID. Its
+checks require root; the `kde`, `hyprlock` and Noctalia `login` modes permit only their own normal real UID. Its
 successful exit grants no operating-system session/command. Its default PAM
 conversation supplies no passwords. The explicit development `--password` mode
 answers the original PAM password prompt with masked terminal input, never from
@@ -70,8 +66,8 @@ policies require their own validation, not automatic permission expansion.
 
 ## Unified GUI setup
 
-The KDE installer also installs root-owned `configure-person.py`. After scanning
-and naming in the full GUI, choose **Sudo**, **KDE sign-in** and **Screen unlock**
+The full installer also installs root-owned `configure-person.py`. After scanning
+and naming in the full GUI, choose **Sudo**, **Desktop sign-in** and **Screen unlock**
 cards and select **Save and set up**. The reference is saved encrypted first;
 `pkexec` supplies one system authorization for setup. The root helper derives the
 only account from Polkit's `PKEXEC_UID` and NSS, never the face label or an input
@@ -239,12 +235,15 @@ KScreenLocker6.7 runs its PAM worker as the logged-in user, using the `kde`
 service. It does not run the root display-manager verifier. See the upstream
 [PAM worker](https://github.com/KDE/kscreenlocker/blob/Plasma/6.7/greeter/pamauthenticator.cpp).
 The optional `hello-lock-verify` launcher is installed root-owned mode 4755 on
-the ordinary system filesystem. It accepts no arguments or target identity:
+the ordinary system filesystem. It accepts only a whitelisted locker service (legacy no-argument calls select KDE),
+never a target identity:
 the kernel real UID must be a normal account, and its protected root-private
 `pam-kde.enabled` must contain the exact opt-in magic. It validates the fixed
 helper and profile paths, disables dumps, closes inherited descriptors above2,
 clears the environment and execs only `hello-sudo verify-service REAL_UID kde` from `/`.
-There is no enrollment, diagnostic, command or template export interface.
+Other lockers use the same fixed verifier with their own service and opt-in, as
+described in the [Hyprland / Noctalia guide](hyprland-noctalia.md). There is no
+enrollment, diagnostic, command or template export interface.
 The existing verifier retains camera/worker isolation and template binding.
 Real UID remains the caller's so PAM can cancel its own child. The launcher
 grants no privileged shell, OS command or passwordless sudo authority.

@@ -43,7 +43,7 @@ fn permitted(service: &str, uid: u32, caller: u32) -> bool {
         // is no logged-in caller and no PAM_RUSER to use before login.
         "plasmalogin" | "sddm" => caller == 0,
         #[cfg(feature = "kde-pam")]
-        "kde" => caller == uid,
+        "kde" | "hyprlock" | "login" => uid == caller,
         _ => false,
     }
 }
@@ -104,12 +104,13 @@ fn authenticate(pamh: *mut c_void, silent: bool, diagnostic: bool) -> Option<()>
     }
     // SAFETY: geteuid takes no pointers. Only the self-bound locker launcher
     // accepts a non-root PAM caller; sudo/display-manager paths remain root.
-    if unsafe { libc::geteuid() } != 0 && service != "kde" {
+    if unsafe { libc::geteuid() } != 0 && !matches!(service, "kde" | "hyprlock" | "login") {
         return None;
     }
-    if service == "kde" {
+    if matches!(service, "kde" | "hyprlock" | "login") {
         boundary::protected_file(Path::new(boundary::LOCK_HELPER), false, 10_000_000).ok()?;
         let child = Command::new(boundary::LOCK_HELPER)
+            .args(["--service", service])
             .env_clear()
             .env("LANG", "C.UTF-8")
             .stdin(Stdio::null())
@@ -382,10 +383,22 @@ mod tests {
         }
     }
     #[test]
+    fn desktop_lockers_accept_only_the_same_non_root_subject() {
+        for service in ["kde", "hyprlock", "login"] {
+            assert_eq!(permitted(service, 1000, 1000), cfg!(feature = "kde-pam"));
+            assert!(!permitted(service, 1000, 1001));
+            // In particular root login/TTY processes must retain password auth.
+            assert!(!permitted(service, 1000, 0));
+            assert!(!permitted(service, 0, 0));
+        }
+        assert!(!permitted("system-login", 1000, 1000));
+        assert!(!permitted("greetd", 1000, 1000));
+    }
+    #[test]
     fn restricts_service_and_claimed_identity() {
         assert!(permitted("sudo", 1000, 1000));
         assert!(permitted("sudo-i", 1000, 1000));
-        for service in ["login", "sshd", "su", "sudo-test", ""] {
+        for service in ["sshd", "su", "sudo-test", ""] {
             assert!(!permitted(service, 1000, 1000));
         }
         assert!(!permitted("sudo", 0, 0));

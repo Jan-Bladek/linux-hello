@@ -22,7 +22,7 @@ MODELS = {'face_detection_yunet_2023mar.onnx': (232589, '8f2383e4dd3cfbb4553ea87
 FILES = {'hello': 0o755, 'hello-settings': 0o755, 'hello-face-worker': 0o755,
          'hello-sudo': 0o755, 'hello-lock-verify': 0o4755, 'pam_linuxhello.so': 0o644,
          'manage.py': 0o755, 'enroll-and-enable.sh': 0o755, 'manage-kde.py': 0o755,
-         'activate-kde.sh': 0o755, 'activate-lock.sh': 0o755, 'configure-person.py': 0o755, 'manage-person.py': 0o755,
+         'activate-kde.sh': 0o755, 'activate-lock.sh': 0o755, 'activate-desktop.py': 0o755, 'configure-person.py': 0o755, 'manage-person.py': 0o755,
          'kde-pam-probe': 0o755, 'linuxhello_kde.pp': 0o644,
          'linuxhello_tpm.pp': 0o644}
 NOTICES = {'provenance.json', 'face_detection_yunet-LICENSE', 'face_detection_yunet-README.md',

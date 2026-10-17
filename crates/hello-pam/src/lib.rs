@@ -3,7 +3,8 @@
 //! installed root-owned verifier and protected, UID-bound enrollment. It does
 //! not advertise qualified PAD or enable the diagnostic D-Bus daemon for auth.
 //! `kde-pam` also permits opted-in root Plasma Login/SDDM helpers and a self-only
-//! unprivileged KScreenLocker caller via the fixed setuid verification launcher.
+//! unprivileged KScreenLocker, Hyprlock and Noctalia-v5 login-stack callers via
+//! the self-only setuid verification launcher. Root login/TTY callers are excluded.
 #![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(all(feature = "privileged", target_os = "linux"))]

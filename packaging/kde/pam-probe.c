@@ -43,14 +43,14 @@ int main(int argc,char **argv) {
     if(argc!=4 && !password_mode) return 1;
     if(getuid()!=0 || geteuid()!=0) {
         struct passwd *account=getpwnam(argv[2]);
-        if(strcmp(argv[1],"kde") || !account || account->pw_uid!=getuid() || getuid()<1000 || geteuid()!=getuid()) return 1;
+        if((strcmp(argv[1],"kde") && strcmp(argv[1],"hyprlock") && strcmp(argv[1],"login")) || !account || account->pw_uid!=getuid() || getuid()<1000 || geteuid()!=getuid()) return 1;
     }
     if(!strcmp(argv[1],"diagnose")) {
         /* Fixed installed diagnostic helper, never a user-supplied command. */
         execl("/usr/local/libexec/linux-hello-sudo/hello-sudo","hello-sudo","diagnose",argv[2],(char *)NULL);
         perror("diagnostic exec");return 1;
     }
-    if(strcmp(argv[1],"kde") && strcmp(argv[1],"plasmalogin") && strcmp(argv[1],"sddm") && strcmp(argv[1],"plasmalogin-greeter") && strcmp(argv[1],"plasmalogin-autologin")) return 1;
+    if(strcmp(argv[1],"kde") && strcmp(argv[1],"hyprlock") && strcmp(argv[1],"login") && strcmp(argv[1],"plasmalogin") && strcmp(argv[1],"sddm") && strcmp(argv[1],"plasmalogin-greeter") && strcmp(argv[1],"plasmalogin-autologin")) return 1;
     struct pam_conv conv={converse,&password_mode}; pam_handle_t *handle=NULL;
     int status=pam_start_confdir(argv[1],argv[2],&conv,argv[3],&handle);
     if(status) { fprintf(stderr,"PAM_START=%d\n",status);return 1; }
