@@ -40,6 +40,10 @@ def changed(original, enable):
     if MARKER in original:
         if MARKER + LINE not in original:
             raise RuntimeError('Linux Hello PAM entries are not adjacent')
+        if enable:
+            remaining = original.replace(MARKER + LINE, '', 1)
+            if auth_lines(remaining) != ['auth include system-auth']:
+                raise RuntimeError('Unsupported managed sudo auth policy')
         return original if enable else original.replace(MARKER + LINE, '', 1)
     if not enable:
         return original
@@ -47,7 +51,7 @@ def changed(original, enable):
     expected = [i for i, s in enumerate(lines) if s.split() == ['auth', 'include', 'system-auth']]
     if len(expected) != 1:
         raise RuntimeError('Unsupported sudo PAM stack; review manually')
-    auth = [line.split() for line in lines if line.split() and line.split()[0].lstrip('-') == 'auth']
+    auth = [line.split() for line in auth_lines(original)]
     if auth != [['auth', 'include', 'system-auth']]:
         raise RuntimeError('Unsupported sudo auth policy; additional controls require manual review')
     lines.insert(expected[0], MARKER + LINE)
@@ -69,8 +73,30 @@ def atomic_write(path, data, mode):
         if os.path.exists(name): os.unlink(name)
 
 def auth_lines(text):
-    return [' '.join(line.split()) for line in text.splitlines()
-            if line.split() and line.split()[0].lstrip('-') == 'auth']
+    """Reviewed PAM subset, fail closed on syntax we cannot interpret.
+    Linux-PAM type/control keywords are case-insensitive. Module paths/options
+    are not. Continuations, unknown record types and malformed records are
+    refused explicitly, never dropped from the authentication policy.
+    """
+    result = []
+    for raw in text.split('\n'):
+        record = raw.split('#', 1)[0]
+        if any(ord(c) > 126 or (ord(c) < 32 and c not in '\t\r') for c in record):
+            raise RuntimeError('Unsupported PAM encoding or control character')
+        line = record.strip()
+        if not line:
+            continue
+        if '\\' in line or '\0' in line:
+            raise RuntimeError('Unsupported PAM continuation or malformed record')
+        fields = line.split()
+        group = fields[0].removeprefix('-').lower()
+        if group not in ('auth', 'account', 'password', 'session') or len(fields) < 3:
+            raise RuntimeError('Unsupported or malformed PAM record')
+        if group == 'auth':
+            fields[0] = 'auth'
+            fields[1] = fields[1].lower()
+            result.append(' '.join(fields))
+    return result
 
 
 def supported_password_policy(text):
@@ -91,7 +117,7 @@ def supported_password_policy(text):
 
 def check_password_policy(service):
     path = Path('/etc/pam.d') / service
-    if not path.exists(): path = Path('/usr/lib/pam.d') / service
+    if not (path.exists() or path.is_symlink()): path = Path('/usr/lib/pam.d') / service
     path = path.resolve(strict=True)
     meta = protected(path)
     if meta.st_size > 16384: raise RuntimeError('Password policy exceeds size limit')

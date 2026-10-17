@@ -96,6 +96,7 @@ def diagnostic_stack(content):
 
 def changed(original, enable, service="kde"):
     marker, line, substack, password_stack = layout(service)
+    if enable: sudo.auth_lines(original)  # reject unsupported logical-record syntax
     # Migrate only the exact old managed jump block; preserve all other lines.
     if marker + LEGACY_LINE in original:
         if original.count(marker) != 1 or original.count(LEGACY_LINE) != 1:

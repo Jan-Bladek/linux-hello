@@ -9,7 +9,7 @@ For an existing session there are two supported locker paths:
 
 | Locker | PAM service | Original authentication fallback |
 | --- | --- | --- |
-| Noctalia 5.x (reviewed source: 5.3.0) | `login` | The host's existing `system-auth` substack |
+| Noctalia 5.3.0 (reviewed source) | `login` | The host's existing `system-auth` substack |
 | Hyprlock (default service name) | `hyprlock` | Reviewed Fedora `system-auth` substack |
 
 Noctalia 4 / Quickshell's `system-login` interface is not supported by this
@@ -126,3 +126,26 @@ Physical Noctalia/Hyprlock unlock must be confirmed by the owner on the target
 system. Hyprlock need not be installed to test its dedicated PAM adapter.
 The same [biometric qualification limits](kde-login.md#status-rollback-and-checks)
 apply: no validated presentation attack detection or representative NIR FAR/FRR.
+
+The adapter currently accepts **5.3.0 only**. A matching major version is not
+caller-contract evidence; other versions require source/protocol review before
+being added. The activation probe intentionally requires successful account and
+credential establishment. Reviewed Noctalia 5.3.0 itself tolerates
+`PAM_AUTHINFO_UNAVAIL` from account checks and does not reject a credential-refresh
+error. The stricter probe is not a faithful simulation of all those caller paths;
+locked/expired accounts and real locked-screen behavior still need a disposable
+desktop test. This integration remains experimental.
+
+If PAM activation succeeds but applying the Noctalia overlay fails, the CLI emits
+`pam_activated:true`, `user_config_applied:false`, `manual_step_required:true` and
+exits with status **2**. PAM remains activated; the message does not claim rollback.
+Retry only the ordinary-user configuration, without another face scan:
+
+```sh
+/usr/local/libexec/linux-hello-sudo/activate-desktop.py --configure-noctalia
+```
+
+This reports `pam_activated:null` because the retry does not inspect or change the
+protected opt-in. GUI setup reports the same pending manual step after a committed
+root operation. Both ordinary-user helper phases are time/output bounded under
+the full GUI operation deadline.

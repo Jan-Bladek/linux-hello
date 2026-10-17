@@ -3,6 +3,7 @@
 This code never supplies a face verdict or writes PAM/protected enrollment.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import pwd
@@ -11,6 +12,7 @@ import tempfile
 import tomllib
 
 BASE = Path('/usr/local/libexec/linux-hello-sudo')
+SUPPORTED_NOCTALIA = ('5.3.0',)
 OVERLAY = '# Linux Hello: submit an empty field to start PAM; PAM still authenticates.\n[lockscreen]\nallow_empty_password = true\n'
 
 
@@ -33,8 +35,8 @@ def configure_noctalia():
     if os.getuid() < 1000 or os.geteuid() != os.getuid():
         raise RuntimeError('Run Noctalia configuration as your desktop account, without sudo.')
     version = subprocess.check_output(['/usr/bin/noctalia', '--version'], text=True, timeout=5).strip()
-    if not version.split() or not version.split()[-1].removeprefix('v').startswith('5.'):
-        raise RuntimeError('This adapter requires Noctalia 5.x; older PAM interfaces require review.')
+    if not version.split() or version.split()[-1].removeprefix('v') not in SUPPORTED_NOCTALIA:
+        raise RuntimeError('This adapter supports reviewed Noctalia 5.3.0; other versions require caller-contract review.')
     result = subprocess.run(['/usr/bin/noctalia', 'config', 'export', 'full'],
                             capture_output=True, text=True, timeout=10, check=True)
     if tomllib.loads(result.stdout).get('lockscreen', {}).get('allow_empty_password') is True:
@@ -81,18 +83,26 @@ def main():
     if args.detect:
         print(detect()); return
     if args.configure_noctalia:
-        configure_noctalia(); return
+        configure_noctalia()
+        print(json.dumps({'version': 1, 'pam_activated': None, 'user_config_applied': True, 'manual_step_required': False}))
+        return 0
     service = detect() if args.service == 'auto' else {'noctalia': 'login'}.get(args.service, args.service)
     print('Close camera preview and face the camera. Sudo authorization comes first, then two real PAM checks.', flush=True)
     subprocess.run(['/usr/bin/sudo', '--', str(BASE / 'manage-kde.py'), 'enable',
                     '--service', service, '--user', pwd.getpwuid(os.getuid()).pw_name], check=True)
     if service == 'login':
-        configure_noctalia()
+        try:
+            configure_noctalia()
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            print(json.dumps({'version': 1, 'pam_activated': True, 'user_config_applied': False, 'manual_step_required': True}))
+            print(f'Linux Hello: PAM activation succeeded, but Noctalia configuration is pending: {error}. Retry activate-desktop.py --configure-noctalia without sudo; no new face scan is needed.', file=__import__('sys').stderr)
+            return 2
+    print(json.dumps({'version': 1, 'pam_activated': True, 'user_config_applied': True, 'manual_step_required': False}))
     print('Ready. On the lock screen, submit the empty password field and look at the camera. Password fallback remains available.')
 
 
 if __name__ == '__main__':
     try:
-        main()
+        raise SystemExit(main())
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
         raise SystemExit(f'Linux Hello: {error}')

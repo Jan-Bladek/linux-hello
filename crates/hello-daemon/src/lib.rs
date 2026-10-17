@@ -46,13 +46,13 @@ mod linux {
 
     pub async fn serve(session_bus: bool) -> zbus::Result<Connection> {
         let builder = if session_bus {
-            zbus::connection::Builder::session()?
+            zbus::connection::Builder::session()
         } else {
-            zbus::connection::Builder::system()?
+            zbus::connection::Builder::system()
         };
         builder
-            .name(BUS_NAME)?
-            .serve_at(OBJECT_PATH, Diagnostics)?
+            .name(BUS_NAME)
+            .serve_at(OBJECT_PATH, Diagnostics)
             .build()
             .await
     }
@@ -91,7 +91,8 @@ mod linux {
                 .call("StartVerification", &(expected_uid, "replay-token"))
                 .await;
             assert!(
-                matches!(response, Err(zbus::Error::MethodError(name, _, _)) if name.as_str() == "org.freedesktop.DBus.Error.UnknownMethod")
+                matches!(&response, Err(zbus::Error::FDO(error)) if matches!(error.as_ref(), zbus::fdo::Error::UnknownMethod(_))),
+                "{response:?}"
             );
             // Credential method accepts no user identifier; supplying one is invalid.
             let response: zbus::Result<u32> = proxy.call("GetRequesterUid", &(0u32,)).await;

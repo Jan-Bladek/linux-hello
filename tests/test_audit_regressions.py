@@ -86,7 +86,7 @@ class AuditRegressions(unittest.TestCase):
             real_path=kde.Path
             def paths(value):
                 return pam if value=='/etc/pam.d' else real_path(value)
-            fake=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PREAUTH=sudo.PREAUTH,protected=lambda p,private=False:SimpleNamespace(st_mode=0o100644),
+            fake=SimpleNamespace(auth_lines=sudo.auth_lines,bump_epoch=lambda:None,ROOT=state,PREAUTH=sudo.PREAUTH,protected=lambda p,private=False:SimpleNamespace(st_mode=0o100644),
                 atomic_write=atomic,check_password_policy=lambda name:(profile/'config.json',b'{}'))
             with patch.object(kde,'sudo',fake),patch.object(kde,'ROOT',state),patch.object(kde,'Path',side_effect=paths),\
                  patch.object(kde,'detect',return_value='plasmalogin'),patch.object(kde,'probe',side_effect=probe),\

@@ -1,7 +1,7 @@
 # Complete Linux Hello installer for Hyprland + Noctalia
 
 Use `install-hyprland-noctalia.sh` to install the **whole Linux Hello application**
-on an existing mutable Fedora 44+ Hyprland / Noctalia 5.x desktop. This includes
+on an existing mutable Fedora 44+ Hyprland / Noctalia 5.3.0 desktop. This includes
 the GUI, recognition worker, pinned YuNet/SFace models, sudo/desktop PAM adapter,
 setuid locker launcher, management tools and SELinux integration. It delegates
 building and system-file installation to the same reviewed
@@ -36,7 +36,7 @@ terminal and open `linux-hello` later inside your Noctalia session.
 
 The workflow is:
 
-1. Check the Fedora target, installed Hyprland and Noctalia 5.x.
+1. Check the Fedora target, installed Hyprland and Noctalia 5.3.0.
 2. Install native development/runtime dependencies through DNF. Bootstrap the
    pinned Rust toolchain when needed, without changing the global default.
 3. Test the GUI/helper/PAM code and documentation, build with locked Cargo

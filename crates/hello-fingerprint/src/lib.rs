@@ -31,7 +31,7 @@ pub enum FingerprintError {
     default_path = "/net/reactivated/Fprint/Manager"
 )]
 trait Manager {
-    fn get_devices(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
+    fn get_devices(&self) -> zbus::Result<Vec<zbus::OwnedObjectPath>>;
 }
 
 #[cfg(target_os = "linux")]
@@ -75,7 +75,6 @@ async fn query_readers(connection: &zbus::Connection) -> Result<Vec<Reader>, Fin
     for path in paths {
         let device = DeviceProxy::builder(connection)
             .path(path.clone())
-            .map_err(|_| FingerprintError::InvalidResponse)?
             .build()
             .await
             .map_err(|_| FingerprintError::Unavailable)?;
@@ -121,7 +120,7 @@ mod tests {
 
     #[zbus::interface(name = "net.reactivated.Fprint.Manager")]
     impl SimulatedManager {
-        fn get_devices(&self) -> Vec<zbus::zvariant::OwnedObjectPath> {
+        fn get_devices(&self) -> Vec<zbus::OwnedObjectPath> {
             vec!["/net/reactivated/Fprint/Device/0".try_into().unwrap()]
         }
     }
@@ -150,13 +149,9 @@ mod tests {
     #[ignore = "requires isolated dbus-run-session; see tests/integration/run-session.sh"]
     async fn isolated_fprintd_protocol_uses_caller_identity() {
         let _server = zbus::connection::Builder::session()
-            .unwrap()
             .name("net.reactivated.Fprint")
-            .unwrap()
             .serve_at("/net/reactivated/Fprint/Manager", SimulatedManager)
-            .unwrap()
             .serve_at("/net/reactivated/Fprint/Device/0", SimulatedReader)
-            .unwrap()
             .build()
             .await
             .unwrap();

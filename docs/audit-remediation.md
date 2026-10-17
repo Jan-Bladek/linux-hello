@@ -4,6 +4,10 @@ The local technical audit examined commit `a75f091`. This document tracks source
 changes and their limits; it is not a new audit score, certification or PAD report.
 The original owner-supplied report remains local and is not included in this commit.
 
+See the [2026-10-17 follow-up](audit-remediation-2026-10-17.md) for corrections to
+the original PAM parser, sudo-i policy, recovery phases, helper deadlines and
+updated dependency findings. The table below records the earlier milestone.
+
 ## Changes implemented
 
 | Finding | Change | Remaining validation or limitation |
@@ -43,8 +47,8 @@ The original owner-supplied report remains local and is not included in this com
 - **F12:** TPM wrapping has no PCR/boot-state or anti-rollback policy. Enabling a
   boot policy without testing recovery and kernel updates could lock out references;
   no such policy was invented or silently imposed.
-- **F19:** Strict advisory checking still fails on the two unmaintained transitive
-  dependencies. No advisory suppression or incompatible replacement was added.
+- **F19:** Strict advisory checking failed on two unmaintained transitive
+  dependencies at this milestone; the 2026-10-17 follow-up records five. No advisory suppression or incompatible replacement was added.
   `ttf-parser` is reachable through the Linux windowing graph. `bincode` remains
   in the lockfile; the selected all-feature tree prints no reverse dependency.
 - **F24:** Rust-owned secret buffers are zeroized where supported, but Slint,

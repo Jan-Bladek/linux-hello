@@ -21,6 +21,8 @@ use generated_ui::SettingsWindow;
 mod system_setup;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(all(feature = "face-diagnostics", target_os = "linux"))]
+    hello_cli::process_io::protect_secret_process()?;
     let runtime = tokio::runtime::Runtime::new()?;
     let window = SettingsWindow::new()?;
     if let Ok(output) = std::process::Command::new("/usr/bin/id")

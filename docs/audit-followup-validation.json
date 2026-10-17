@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "date": "2026-10-17",
+  "source_base_commit": "ff502df135c99d8f7cb4c95c532bb5bd65b5cc69",
+  "source_scope": "Code hashes below; final revision is the Git commit containing this record. Counts are per command and must not be summed as unique tests.",
+  "checks": {
+    "rust_default": {
+      "passed": 80,
+      "failed": 0,
+      "ignored_in_this_command": 5
+    },
+    "rust_optional": {
+      "passed": 130,
+      "failed": 0,
+      "ignored_in_this_command": 13
+    },
+    "isolated_dbus": {
+      "passed": 2,
+      "failed": 0,
+      "ignored_in_this_command": 0
+    },
+    "root_private_namespace": {
+      "passed": 5,
+      "failed": 0,
+      "ignored_in_this_command": 0
+    },
+    "python": {
+      "passed": 65,
+      "failed": 0
+    },
+    "clippy_full_workspace_desktop_features": {
+      "passed": true,
+      "warnings_denied": true
+    },
+    "licenses_sources_bans": {
+      "passed": true
+    },
+    "strict_advisories": {
+      "passed": false,
+      "known_vulnerability_entries": 0,
+      "unmaintained": [
+        "RUSTSEC-2025-0141",
+        "RUSTSEC-2026-0192",
+        "RUSTSEC-2026-0371",
+        "RUSTSEC-2026-0370",
+        "RUSTSEC-2026-0372"
+      ]
+    }
+  },
+  "installed_host": {
+    "installed_reference_valid": true,
+    "key_backend": "tpm",
+    "previous_sudo_login_unlock_enabled": true,
+    "physical_face_or_PAD_test": false
+  },
+  "full_bundle_installation": true,
+  "installed_binary_and_changed_management_hashes_match_build": true,
+  "selinux": "Enforcing",
+  "production_pam_configuration_modified": false,
+  "pam_module_and_helpers_updated": true,
+  "models_thresholds_template_schema_or_key_policy_changed": false,
+  "re_enrollment_required": false,
+  "physical_owner_recognition_evaluated": false,
+  "pad_qualified": false,
+  "nir_population_far_frr_measured": false,
+  "power_loss_or_full_generation_recovery_qualified": false,
+  "source_file_sha256": {
+    "Cargo.lock": "49e4b8bd3b5a811137bec35b07e623972c1cd1f2ee5e0a768ae0143355838cf2",
+    "Cargo.toml": "e08a583ee162934c5c5e82568ad77e32d0635b05723d06bdd262851944ad76d6",
+    "apps/hello-settings/src/main.rs": "ded4d247236a13a7ab62968e547a577a11c2266a82f82b7d7f0144976d1cda56",
+    "apps/hello-settings/src/system_setup.rs": "9bc513f894e1126b365f2140b8c43b8186c73a3540b8bd0796eeb732a7228b86",
+    "apps/hello-settings/ui/settings.slint": "9dd4289c43cf6941a424540b4fa3051fb2980e47623cb8d7d6725fc5f5abbbd1",
+    "crates/hello-cli/src/process_io.rs": "b0c0cdb538fa13923c24f1a00666dfe9eeaa909637360dd2b5aa5756114e79d7",
+    "crates/hello-daemon/src/lib.rs": "5a3845d9fe8086e01bf3d771eb36a550eec46ebbc54f9fb72b2cc2dc118e6285",
+    "crates/hello-fingerprint/src/lib.rs": "5d6469da642f7265cb7655488f907c31de5eb29fa463a097c708aa121faf81e7",
+    "crates/hello-sudo/src/main.rs": "885f5a08a861e954f1c144eed1de53b3fd98dea51b5afb1fb56cde92a28cde3a",
+    "crates/hello-sudo/src/policy.rs": "ecd6d8d5f6967d7c883dd5e6e1eac1c92e00c0cc7b62b733d716828fbbcdf2fa",
+    "crates/hello-sudo/src/profile.rs": "d0559694939697ee29f8543f55801f04f0beab2364a0ecd9333cf25a23787ac9",
+    "packaging/installer/install-hyprland-noctalia.py": "9392a5dc03ef18773aef7f0e867fad7cb7c2ec4cf4fd081e79d7b4746ca700d1",
+    "packaging/kde/activate-desktop.py": "dc41953ebf0a4729d331efa04c7ca65b709871370ffc452bf98ea97ec4dbec68",
+    "packaging/kde/manage-kde.py": "cba28cc19e77b315db9ef4daef6ea671547613cccdddf25c76a1981e0f98f86d",
+    "packaging/kde/test-audit.py": "f32c3a4657b03945ad50c2dce3ba53ba7bddc117e3a857f4be293f01717e8a7d",
+    "packaging/sudo/manage.py": "0e6708a7b0b0aea8b1198205aca124bc1a5f6efa74289200e37ff2cbdad29b0e",
+    "tests/test_audit_regressions.py": "5c85d10ebecf60c76e9aaacf2882c34030fe80e515c4ee41fe750fc9e2fcaae8",
+    "tests/test_desktop_unlock.py": "b82d35cfb0576a31f890bd4688961a87d82f40b13199033e454ae234a4fecf6c",
+    "tests/test_hyprland_installer.py": "805987df105c3cf6530028c885fee031c46d2a4c2529bb11b921436224726951",
+    "crates/hello-sudo/src/admission.rs": "90765c407f9972d8d107c64adb551ccb122a51dcbba8e432dd2e3f93c791137e",
+    "tests/test_pam_policy.py": "f0f851ee45013cb1b3c76a12d7012926d2e2d50bf55c16abca3ac1683b34d61a",
+    "tests/fixtures/pam-policy-cases.json": "a82296846518d2155f14526853f96782921bbd87e065370eff9f58f31d4dff64"
+  }
+}

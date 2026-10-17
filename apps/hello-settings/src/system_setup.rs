@@ -20,6 +20,8 @@ pub fn configure(
     choices: [bool; 3],
     ui: slint::Weak<SettingsWindow>,
 ) -> Result<String, String> {
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(300);
     let source = source
         .to_str()
         .ok_or("The reference path is not valid text.")?;
@@ -27,18 +29,18 @@ pub fn configure(
         return Err("Invalid reference passphrase length.".into());
     }
     let desktop_helper = "/usr/local/libexec/linux-hello-sudo/activate-desktop.py";
-    let detected = Command::new("/usr/bin/python3")
-        .args(["-B", desktop_helper, "--detect"])
-        .output()
-        .map_err(|_| "Cannot detect the desktop locker; check the installation.")?;
+    let detected = hello_cli::process_io::bounded_output(
+        Command::new("/usr/bin/python3").args(["-B", desktop_helper, "--detect"]),
+        deadline.min(Instant::now() + Duration::from_secs(10)),
+        64,
+    )
+    .map_err(|_| "Desktop detection failed or timed out; no system setup was started.")?;
     let locker = String::from_utf8_lossy(&detected.stdout);
     let locker = locker.trim();
     if !detected.status.success() || !matches!(locker, "kde" | "hyprlock" | "login") {
         return Err("Cannot detect a supported desktop locker.".into());
     }
     let metadata = serde_json::json!({"source":source,"sudo":choices[0],"login":choices[1],"unlock":choices[2],"unlock_service":locker});
-    let started = Instant::now();
-    let deadline = started + Duration::from_secs(300);
     let mut child = Command::new("/usr/bin/pkexec")
         .arg(HELPER)
         .stdin(Stdio::piped())
@@ -121,7 +123,7 @@ pub fn configure(
             }
             _ => (),
         }
-        if started.elapsed() >= Duration::from_secs(300) {
+        if Instant::now() >= deadline {
             // Root setup has its own 240-second alarm and rollback. Do not kill
             // an authorized root transaction midway through recovery.
             let _ = child.kill();
@@ -133,20 +135,23 @@ pub fn configure(
     let (configured, message) = reader.join().map_err(|_| "Cannot read the setup result.")?;
     if status.is_some_and(|s| s.success()) && configured {
         if choices[2] && locker == "login" {
-            let result = Command::new("/usr/bin/python3")
-                .args(["-B", desktop_helper, "--configure-noctalia"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map_err(|_| "Face configured. Enable Allow empty password in Noctalia Security settings to start face verification with Enter.")?;
-            if !result.success() {
-                return Ok("Face configured. Enable Allow empty password in Noctalia Security settings to start face verification with Enter.".into());
+            let result = hello_cli::process_io::bounded_output(
+                Command::new("/usr/bin/python3").args([
+                    "-B",
+                    desktop_helper,
+                    "--configure-noctalia",
+                ]),
+                deadline.min(Instant::now() + Duration::from_secs(30)),
+                4096,
+            );
+            if !result.is_ok_and(|output| output.status.success()) {
+                return Ok("Face configured in PAM; Noctalia settings are pending. Enable Allow empty password in Noctalia Security settings, or run activate-desktop.py --configure-noctalia without sudo. No new scan is needed.".into());
             }
         }
         Ok("Face saved and configured for the selected uses.".into())
     } else {
         Err(if message.is_empty() {
-            "Setup was not approved. Previous authentication and password fallback remain available.".into()
+            "Setup did not report completion. Check system status; earlier changes may remain. Password fallback is available.".into()
         } else {
             message
         })

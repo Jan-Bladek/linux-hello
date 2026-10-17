@@ -19,6 +19,7 @@ use std::{
 };
 use zeroize::Zeroizing;
 type Error = Box<dyn std::error::Error + Send + Sync>;
+mod admission;
 mod coordination;
 mod policy;
 mod profile;
@@ -96,6 +97,9 @@ async fn verify(
     let read = read_lock()?;
     policy::check(service)?;
     activation_allowed(uid, service)?;
+    let _admission = service
+        .map(|_| admission::Admission::reserve(uid))
+        .transpose()?;
     let snapshot = profile_snapshot(uid)?;
     let (config, template) = load(uid)?;
     drop(read);
@@ -488,6 +492,48 @@ async fn run() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "root private namespace with synthetic state and PAM markers required"]
+    fn runtime_policy_checks_actual_sudo_i_and_mixed_case_controls() {
+        assert_ne!(
+            fs::read_link("/proc/self/ns/mnt").unwrap(),
+            fs::read_link("/proc/1/ns/mnt").unwrap()
+        );
+        assert_eq!(
+            fs::read("/etc/pam.d/.audit-test-only").unwrap(),
+            b"synthetic-only\n"
+        );
+        let conf = Path::new("/etc/pam.d");
+        let password = "auth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n";
+        fs::write(conf.join("system-auth"), password).unwrap();
+        fs::write(conf.join("sudo"), "auth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient /usr/lib64/security/pam_linuxhello.so\nauth include system-auth\n").unwrap();
+        fs::write(conf.join("sudo-i"), "auth include sudo\n").unwrap();
+        assert!(policy::check(Some("sudo-i")).is_ok());
+        for alias in [
+            "auth include sudo\nAUTH required pam_deny.so\n",
+            "auth include sudo-i\n",
+            "auth include custom\n",
+            "auth substack sudo\n",
+        ] {
+            fs::write(conf.join("sudo-i"), alias).unwrap();
+            assert!(policy::check(Some("sudo-i")).is_err());
+        }
+        fs::write(conf.join("sudo-i"), "auth include sudo\n").unwrap();
+        for group in ["AUTH", "Auth", "-AUTH"] {
+            fs::write(
+                conf.join("system-auth"),
+                format!("{group} required pam_example_mfa.so\n{password}"),
+            )
+            .unwrap();
+            assert!(policy::check(Some("sudo-i")).is_err());
+        }
+        fs::write(conf.join("system-auth"), password).unwrap();
+        assert!(policy::check(Some("sudo-i")).is_ok());
+        fs::remove_file(conf.join("sudo-i")).unwrap();
+        std::os::unix::fs::symlink(conf.join("absent-policy"), conf.join("sudo-i")).unwrap();
+        assert!(policy::check(Some("sudo-i")).is_err());
+    }
+
     #[test]
     #[ignore = "root in a private namespace with synthetic audit marker required"]
     fn interrupted_publication_recovers_only_previous_synthetic_profile() {

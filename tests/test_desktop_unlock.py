@@ -98,7 +98,7 @@ class DesktopUnlock(unittest.TestCase):
                 root=Path(tmp);state=root/'state';state.mkdir();profile=state/'1000';profile.mkdir()
                 other=state/'1001';other.mkdir();pam=root/'pam';pam.mkdir();vendor=root/'vendor';vendor.mkdir()
                 policy=state/'policy';policy.write_bytes(b'policy')
-                fake=SimpleNamespace(bump_epoch=lambda:None,PREAUTH=manager.sudo.PREAUTH,
+                fake=SimpleNamespace(auth_lines=manager.sudo.auth_lines,bump_epoch=lambda:None,PREAUTH=manager.sudo.PREAUTH,
                                      protected=lambda p,private=False:SimpleNamespace(st_mode=0o100644),
                                      check_password_policy=lambda name:(policy,b'policy'),
                                      atomic_write=lambda p,b,mode:p.write_bytes(b))
@@ -127,3 +127,16 @@ class DesktopUnlock(unittest.TestCase):
                     self.assertEqual((pam/'hyprlock').exists(),administrator_change)
                     if administrator_change:
                         self.assertEqual((pam/'hyprlock').read_text(),manager.LOCKER_DEFAULT+'# Administrator addition\n')
+
+    def test_activation_reports_partial_pam_commit_and_overlay_only_retry(self):
+        for failure in (RuntimeError('override conflict'), subprocess.TimeoutExpired('noctalia', 10)):
+            with patch.object(desktop.os,'getuid',return_value=1000),patch.object(desktop.os,'geteuid',return_value=1000),patch.object(desktop.subprocess,'run') as root,patch.object(desktop,'configure_noctalia',side_effect=failure),patch('sys.argv',['activate-desktop.py','--service','noctalia']),contextlib.redirect_stdout(io.StringIO()) as output,contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(desktop.main(),2)
+                result=json.loads(next(line for line in output.getvalue().splitlines() if line.startswith('{')))
+                self.assertTrue(result['pam_activated']);self.assertFalse(result['user_config_applied']);self.assertTrue(result['manual_step_required'])
+                self.assertIn('PAM activation succeeded',errors.getvalue());self.assertIn('--configure-noctalia',errors.getvalue())
+                self.assertEqual(root.call_count,1)
+        with patch.object(desktop.os,'getuid',return_value=1000),patch.object(desktop.os,'geteuid',return_value=1000),patch.object(desktop.subprocess,'run') as root,patch.object(desktop,'configure_noctalia'),patch('sys.argv',['activate-desktop.py','--configure-noctalia']),contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(desktop.main(),0)
+            self.assertIsNone(json.loads(output.getvalue())['pam_activated'])
+            root.assert_not_called()

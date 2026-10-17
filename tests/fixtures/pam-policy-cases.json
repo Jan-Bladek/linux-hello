@@ -1,0 +1,189 @@
+[
+  {
+    "name": "reviewed-policy",
+    "text": "auth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": true
+  },
+  {
+    "name": "mixed-case-keywords",
+    "text": "AuTh ReQuIrEd pam_env.so\nAuTh ReQuIrEd pam_faildelay.so delay=2000000\nAuTh SUFFICIENT pam_unix.so nullok\nAuTh ReQuIrEd pam_deny.so\n",
+    "password_allowed": true
+  },
+  {
+    "name": "comments",
+    "text": "# policy\\ continuation ignored in comment\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": true
+  },
+  {
+    "name": "auth-pam_example_mfa.so",
+    "text": "auth required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "auth-pam_faillock.so",
+    "text": "auth required pam_faillock.so preauth\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "auth-pam_access.so",
+    "text": "auth required pam_access.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "auth-pam_deny.so",
+    "text": "auth required pam_deny.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "AUTH-pam_example_mfa.so",
+    "text": "AUTH required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "AUTH-pam_faillock.so",
+    "text": "AUTH required pam_faillock.so preauth\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "AUTH-pam_access.so",
+    "text": "AUTH required pam_access.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "AUTH-pam_deny.so",
+    "text": "AUTH required pam_deny.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "Auth-pam_example_mfa.so",
+    "text": "Auth required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "Auth-pam_faillock.so",
+    "text": "Auth required pam_faillock.so preauth\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "Auth-pam_access.so",
+    "text": "Auth required pam_access.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "Auth-pam_deny.so",
+    "text": "Auth required pam_deny.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "-AUTH-pam_example_mfa.so",
+    "text": "-AUTH required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "-AUTH-pam_faillock.so",
+    "text": "-AUTH required pam_faillock.so preauth\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "-AUTH-pam_access.so",
+    "text": "-AUTH required pam_access.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "-AUTH-pam_deny.so",
+    "text": "-AUTH required pam_deny.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "continuation",
+    "text": "auth required \\\n pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "orphan",
+    "text": "pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "bracket",
+    "text": "AUTH [success=1 default=bad] pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "include",
+    "text": "auth include custom\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "unknown-type",
+    "text": "@include custom\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "double-minus",
+    "text": "--auth required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "nul",
+    "text": "auth\u0000 required pam_example_mfa.so\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "alias",
+    "text": "auth include sudo\n",
+    "password_allowed": false,
+    "sudo_i_allowed": true
+  },
+  {
+    "name": "alias-case",
+    "text": "-AUTH INCLUDE sudo\n",
+    "password_allowed": false,
+    "sudo_i_allowed": true
+  },
+  {
+    "name": "alias-cycle",
+    "text": "auth include sudo-i\n",
+    "password_allowed": false,
+    "sudo_i_allowed": false
+  },
+  {
+    "name": "alias-nested",
+    "text": "auth include custom\n",
+    "password_allowed": false,
+    "sudo_i_allowed": false
+  },
+  {
+    "name": "alias-substack",
+    "text": "auth substack sudo\n",
+    "password_allowed": false,
+    "sudo_i_allowed": false
+  },
+  {
+    "name": "alias-extra",
+    "text": "auth include sudo\nAUTH required pam_example_mfa.so\n",
+    "password_allowed": false,
+    "sudo_i_allowed": false
+  },
+  {
+    "name": "alias-extra-deny",
+    "text": "auth include sudo\nauth required pam_deny.so\n",
+    "password_allowed": false,
+    "sudo_i_allowed": false
+  },
+  {
+    "name": "unicode-separator",
+    "text": "auth\u00a0required\u00a0pam_env.so\nauth\u00a0required\u00a0pam_faildelay.so\u00a0delay=2000000\nauth\u00a0sufficient\u00a0pam_unix.so\u00a0nullok\nauth\u00a0required\u00a0pam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "control-separator",
+    "text": "auth\u001crequired\u001cpam_env.so\nauth\u001crequired\u001cpam_faildelay.so\u001cdelay=2000000\nauth\u001csufficient\u001cpam_unix.so\u001cnullok\nauth\u001crequired\u001cpam_deny.so\n",
+    "password_allowed": false
+  },
+  {
+    "name": "unicode-comments",
+    "text": "# comment: \u017c\u00f3\u0142\u0107\nauth required pam_env.so\nauth required pam_faildelay.so delay=2000000\nauth sufficient pam_unix.so nullok\nauth required pam_deny.so\n",
+    "password_allowed": true
+  }
+]

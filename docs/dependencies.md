@@ -73,3 +73,20 @@ still fail with the same two unmaintained dependencies and zero reported known
 vulnerability entries. No warning exclusions were introduced. These counts
 describe this run, not a permanent guarantee. Use `cargo tree --workspace
 --all-features --target all -i ttf-parser` to include the GUI in reachability checks.
+
+## Follow-up graph — 2026-10-17
+
+First-party IPC/daemon/fprintd code now uses pinned zbus 6.0.0 and its integrated
+wire/name types, with explicit Tokio/proxy/service/object-manager features.
+Tokio is pinned to 1.53.3 to meet its minimum patch requirement. Fallible builder
+configuration now reports errors from `build()` per the new API; no caller-supplied
+UID or biometric RPC was added. See [upstream zbus 6 documentation](https://docs.rs/zbus/6.0.0/zbus/).
+
+This **does not clear the strict advisory gate**. Slint 1.18.1's winit backend
+still brings zbus 5.19.0 / zvariant 5.15.0 / zbus_names 4.3.4 and the old derives.
+The Linux GUI font chain retains ttf-parser 0.25.1, while bincode 2.0.1 remains in
+the cross-platform lockfile. The current strict run reports five unmaintained
+warnings and zero known vulnerability entries, not an authentication exploit or
+clean bill of health. No ignores, checksums or lock entries were manually removed.
+Maintained GUI/windowing upstream replacements and native-library auditing remain
+open. The [follow-up tracker](audit-remediation-2026-10-17.md) records the scope.

@@ -37,8 +37,8 @@ def check_desktop():
             raise RuntimeError(f'Missing {path}. Install your Hyprland / Noctalia desktop first. No external repository is enabled by this installer.')
     version = subprocess.check_output(['/usr/bin/noctalia', '--version'], text=True, timeout=5).strip()
     words = version.split()
-    if not words or not words[-1].removeprefix('v').startswith('5.'):
-        raise RuntimeError('Noctalia 5.x is required (reviewed on 5.3.0); the older Quickshell interface is not supported.')
+    if not words or words[-1].removeprefix('v') != '5.3.0':
+        raise RuntimeError('Reviewed Noctalia 5.3.0 is required; other versions need caller-contract review.')
     print(f'Desktop check: Hyprland installed; {version}.', flush=True)
 
 
@@ -76,7 +76,7 @@ def main(argv=None):
     full += ['--' + name.replace('_', '-') for name in BUILD_OPTIONS if getattr(args, name)]
     commands = setup_commands(args)
     print('Linux Hello — Hyprland + Noctalia installation', flush=True)
-    print('Target: existing mutable Fedora 44+ desktop, Noctalia 5.x. No OS/compositor installation or display-manager replacement.', flush=True)
+    print('Target: existing mutable Fedora 44+ desktop, Noctalia 5.3.0. No OS/compositor installation or display-manager replacement.', flush=True)
     print('Build: native dependencies, pinned Rust, locked Cargo packages, verified YuNet/SFace models, GUI, worker, PAM, helpers and SELinux.', flush=True)
     if args.dry_run:
         print('1. Check Fedora, Hyprland and Noctalia version (read-only at execution).')

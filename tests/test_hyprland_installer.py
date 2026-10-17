@@ -71,7 +71,7 @@ class HyprlandInstallerTests(unittest.TestCase):
         with patch.object(m.Path,'is_file',return_value=False):
             with self.assertRaisesRegex(RuntimeError,'Missing'):m.check_desktop()
         with patch.object(m.Path,'is_file',return_value=True),patch.object(m.os,'access',return_value=True),patch.object(m.subprocess,'check_output',return_value='noctalia v4.6.0'):
-            with self.assertRaisesRegex(RuntimeError,'Noctalia 5.x'):m.check_desktop()
+            with self.assertRaisesRegex(RuntimeError,'Noctalia 5.3.0'):m.check_desktop()
         with patch.object(m.os,'getuid',return_value=1000),patch.object(m.os,'geteuid',return_value=1000),patch.object(m,'check_platform'),patch.object(m,'check_desktop',side_effect=RuntimeError('unsupported')),patch.object(m,'run') as run,contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(RuntimeError):m.main([])
             run.assert_not_called()

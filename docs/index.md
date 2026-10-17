@@ -21,7 +21,7 @@ security-qualified biometric product.
 | sudo | `sudo`, `sudo-i` | Claimed UID matches caller; trusted PAM_RUSER when sudo's real UID is root | `enroll-and-enable.sh` |
 | KDE login | `plasmalogin`, `sddm` | Root display-manager helper and protected per-account/service opt-in | `activate-kde.sh` |
 | KDE unlock | `kde` | Claimed UID equals kernel real caller UID; self-only setuid launcher | `activate-lock.sh` |
-| Noctalia 5.x / Hyprlock | `login` / `hyprlock` | Claimed UID equals normal real caller UID; independent root-private opt-in | `activate-desktop.py` |
+| Noctalia 5.3.0 / Hyprlock | `login` / `hyprlock` | Claimed UID equals normal real caller UID; independent root-private opt-in | `activate-desktop.py` |
 
 The current pipeline uses YuNet + SFace + OpenCV DNN, not SCRFD/ArcFace/ONNX
 Runtime. Five landmarks are not depth or validated anti-spoofing. The threshold
@@ -69,3 +69,5 @@ retain the dated log for traceability. Dependency audits and research results ar
 snapshots, not statements that upstream has remained unchanged.
 
 - [Technical audit remediation and open findings](audit-remediation.md)
+
+- [2026-10-17 audit follow-up](audit-remediation-2026-10-17.md): verified code fixes, partial mitigation and open release requirements.

@@ -22,7 +22,7 @@ repository. No cloud processing or runtime model download is required.
 | sudo | Protected root-owned reference, UID-bound verifier, original password fallback | Separate experimental opt-in |
 | KDE login | Plasma Login Manager/SDDM PAM integration with independent account/service opt-in | Owner confirmed real Plasma login; SDDM is implemented but not physically validated here |
 | KDE unlock | Self-account KScreenLocker integration for Win + L through a restricted setuid launcher | Owner confirmed unlocking on Fedora KDE |
-| Hyprland / Noctalia unlock | Self-account Hyprlock and Noctalia 5.x PAM adapters with independent opt-in | Implemented; see [activation and validation scope](docs/hyprland-noctalia.md) |
+| Hyprland / Noctalia unlock | Self-account Hyprlock and Noctalia 5.3.0 PAM adapters with independent opt-in | Implemented; see [activation and validation scope](docs/hyprland-noctalia.md) |
 | Account management | Authorized self-account status, pause and confirmed reference removal in GUI/CLI | Metadata status does not perform live verification |
 | Installation health | Metadata-only GUI/CLI report with pinned model checks | Not an authentication or PAD result |
 | Diagnostic daemon | Read-only D-Bus status and bus-derived requester UID | No enrollment or authentication authority |
@@ -48,7 +48,7 @@ selected uses through the GUI after installation. See the
 [complete installation guide](docs/install-fedora.md) for first-time setup,
 offline/build-only options, TPM, update and recovery.
 
-For an existing Hyprland + Noctalia 5.x desktop, use the complete profile installer:
+For an existing Hyprland + Noctalia 5.3.0 desktop, use the complete profile installer:
 
 ```sh
 ./install-hyprland-noctalia.sh --open-settings
@@ -174,7 +174,7 @@ submit the empty field. Password fallback remains available. KWallet can request
 its own password. See [KDE installation, activation and rollback](docs/kde-login.md).
 
 Supported PAM services are `sudo`, `sudo-i`, `plasmalogin`, `sddm`, `kde`,
-`hyprlock` and self-account `login` for Noctalia 5.x. Root TTY login remains on
+`hyprlock` and self-account `login` for Noctalia 5.3.0. Root TTY login remains on
 its original policy. GDM, greetd/Noctalia Greeter, sshd, su and Polkit agents
 are not integrated. See [Hyprland and Noctalia](docs/hyprland-noctalia.md).
 The diagnostic daemon's disabled readiness flags do not report the activation

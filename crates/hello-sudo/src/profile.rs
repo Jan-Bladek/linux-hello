@@ -40,10 +40,16 @@ impl ProfileWriteGuard {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
             Err(e) => return Err(e.into()),
         };
-        let journal = dir.join(".profile-update");
+        // Prepare a complete durable index before publishing the blocking
+        // marker. No active profile bytes change until new() returns.
+        for name in [".profile-update", ".profile-retired"] {
+            if fs::symlink_metadata(dir.join(name)).is_ok() {
+                return Err("Profile recovery/cleanup required before publication".into());
+            }
+        }
+        let journal = dir.join(".profile-prepare");
         fs::create_dir(&journal)?;
         fs::set_permissions(&journal, fs::Permissions::from_mode(0o700))?;
-        // Presence blocks readers even if preparing the journal is interrupted.
         std::fs::File::open(dir)?.sync_all()?;
         for (name, data) in &before {
             if let Some(data) = data {
@@ -64,6 +70,7 @@ impl ProfileWriteGuard {
         };
         write_private(&journal.join("index.json"), &serde_json::to_vec(&index)?)?;
         std::fs::File::open(&journal)?.sync_all()?;
+        fs::rename(&journal, dir.join(".profile-update"))?;
         std::fs::File::open(dir)?.sync_all()?;
         Ok(Self {
             dir: dir.to_path_buf(),
@@ -73,8 +80,13 @@ impl ProfileWriteGuard {
         })
     }
     pub(super) fn commit(mut self) -> Result<(), Error> {
-        remove_journal(&self.dir)?;
+        // Atomic retirement commits publication. Interrupted cleanup must never
+        // look like an incomplete rollback journal or restore old bytes.
+        retire_journal(&self.dir)?;
         self.committed = true;
+        if cleanup_phase(&self.dir, ".profile-retired").is_err() {
+            eprintln!("Linux Hello: profile committed; retired journal cleanup requires recover.");
+        }
         Ok(())
     }
 }
@@ -149,8 +161,32 @@ pub(super) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     file.sync_all()?;
     Ok(())
 }
-fn remove_journal(dir: &Path) -> Result<(), Error> {
-    let journal = dir.join(".profile-update");
+fn retire_journal(dir: &Path) -> Result<(), Error> {
+    if fs::symlink_metadata(dir.join(".profile-retired")).is_ok() {
+        return Err("Retired journal already exists; administrator recovery required".into());
+    }
+    fs::rename(dir.join(".profile-update"), dir.join(".profile-retired"))?;
+    std::fs::File::open(dir)?.sync_all()?;
+    Ok(())
+}
+fn cleanup_phase(dir: &Path, phase: &str) -> Result<(), Error> {
+    let journal = dir.join(phase);
+    protected_path(&journal.join("index.json"))?;
+    use std::os::unix::fs::MetadataExt;
+    let meta = fs::symlink_metadata(&journal)?;
+    if !meta.is_dir() || meta.uid() != 0 || meta.mode() & 0o077 != 0 {
+        return Err("Unsafe profile journal phase".into());
+    }
+    for item in fs::read_dir(&journal)? {
+        let item = item?;
+        if !["template.lht", "config.json", "index.json"]
+            .iter()
+            .any(|name| item.file_name() == *name)
+        {
+            return Err("Unexpected profile journal entry".into());
+        }
+        protected_file(&item.path(), true, 70000)?;
+    }
     for name in ["template.lht", "config.json", "index.json"] {
         fs::remove_file(journal.join(name)).or_else(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -164,12 +200,32 @@ fn remove_journal(dir: &Path) -> Result<(), Error> {
     std::fs::File::open(dir)?.sync_all()?;
     Ok(())
 }
+fn remove_journal(dir: &Path) -> Result<(), Error> {
+    retire_journal(dir)?;
+    cleanup_phase(dir, ".profile-retired")
+}
 pub(super) fn recover_profile(uid: u32) -> Result<(), Error> {
     if uid < 1000 {
         return Err("Normal account required".into());
     }
     let dir = directory(uid);
     let journal = dir.join(".profile-update");
+    if fs::symlink_metadata(&journal).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) {
+        // These phases never need preimages: prepare precedes active writes;
+        // retired follows durable commit/rollback. Cleanup is idempotent even
+        // if index/backups were already partly removed by a previous cleanup.
+        let mut cleaned = false;
+        for phase in [".profile-prepare", ".profile-retired"] {
+            if fs::symlink_metadata(dir.join(phase)).is_ok() {
+                cleanup_phase(&dir, phase)?;
+                cleaned = true;
+            }
+        }
+        if cleaned {
+            eprintln!("Profile journal cleanup completed; active reference retained.");
+            return Ok(());
+        }
+    }
     protected_path(&journal.join("index.json"))?;
     use std::os::unix::fs::MetadataExt;
     let meta = fs::symlink_metadata(&journal)?;
@@ -234,4 +290,67 @@ pub(super) fn recover_profile(uid: u32) -> Result<(), Error> {
         "Previous protected reference restored. No PAM activation or camera capture performed."
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    #[ignore = "root private mount namespace with synthetic marker required"]
+    fn interrupted_prepare_and_retired_cleanup_preserve_the_active_generation() {
+        assert_eq!(
+            fs::read(Path::new(crate::boundary::ROOT).join(".audit-test-only")).unwrap(),
+            b"synthetic-only\n"
+        );
+        assert_ne!(
+            fs::read_link("/proc/self/ns/mnt").unwrap(),
+            fs::read_link("/proc/1/ns/mnt").unwrap()
+        );
+        // SAFETY: getuid takes no pointers and has no preconditions.
+        assert_eq!(unsafe { libc::getuid() }, 0);
+        let uid = 1002;
+        let dir = directory(uid);
+        fs::create_dir(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        write_private(&dir.join("template.lht"), b"old-encrypted-fixture").unwrap();
+        write_private(&dir.join("config.json"), b"old-config-fixture").unwrap();
+        // Crash before index publication: active files were never touched.
+        let preparing = dir.join(".profile-prepare");
+        fs::create_dir(&preparing).unwrap();
+        fs::set_permissions(&preparing, fs::Permissions::from_mode(0o700)).unwrap();
+        write_private(&preparing.join("template.lht"), b"partial-backup").unwrap();
+        assert!(ProfileWriteGuard::new(&dir).is_err());
+        recover_profile(uid).unwrap();
+        assert_eq!(
+            fs::read(dir.join("template.lht")).unwrap(),
+            b"old-encrypted-fixture"
+        );
+        assert!(!preparing.exists());
+        // Crash after commit and during deletion: missing index is harmless
+        // only in the atomically retired phase; never restore old preimages.
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        fs::write(dir.join("template.lht"), b"new-encrypted-fixture").unwrap();
+        fs::write(dir.join("config.json"), b"new-config-fixture").unwrap();
+        retire_journal(&dir).unwrap();
+        std::mem::forget(guard);
+        fs::remove_file(dir.join(".profile-retired/index.json")).unwrap();
+        recover_profile(uid).unwrap();
+        assert_eq!(
+            fs::read(dir.join("template.lht")).unwrap(),
+            b"new-encrypted-fixture"
+        );
+        assert_eq!(
+            fs::read(dir.join("config.json")).unwrap(),
+            b"new-config-fixture"
+        );
+        assert!(!dir.join(".profile-retired").exists());
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        guard.commit().unwrap();
+        assert!(!dir.join(".profile-update").exists());
+        let _global_lease = crate::coordination::AttemptLease::acquire().unwrap();
+        let reservation = crate::admission::Admission::reserve(uid).unwrap();
+        assert!(crate::admission::Admission::reserve(uid).is_err());
+        drop(reservation);
+        assert!(crate::admission::Admission::reserve(uid).is_err());
+    }
 }

@@ -5,6 +5,24 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Reduce accidental secret persistence in dumps. This cannot wipe copies in
+/// the renderer/native allocator or protect against an already privileged reader.
+pub fn protect_secret_process() -> io::Result<()> {
+    let limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: initialized limit and constant resource/prctl arguments.
+    if unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: constant prctl arguments, no pointers.
+    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 pub struct DeadlineIo<T> {
     inner: T,
     deadline: Instant,
@@ -88,10 +106,125 @@ impl<T: Write + AsRawFd> Write for DeadlineIo<T> {
     }
 }
 
+/// Bounded ordinary-user helper supervision. Root provisioning has its own
+/// recovery protocol and must not be run through this process-group killer.
+pub fn bounded_output(
+    command: &mut std::process::Command,
+    deadline: Instant,
+    maximum: usize,
+) -> io::Result<std::process::Output> {
+    use std::{os::unix::process::CommandExt, process::Stdio, sync::mpsc};
+    if Instant::now() >= deadline {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "Operation deadline exceeded",
+        ));
+    }
+    let mut child = command
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let pid = child.id();
+    let output = child.stdout.take().expect("piped stdout");
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let reader = std::thread::spawn(move || {
+        let result = (|| {
+            let mut bytes = Vec::new();
+            DeadlineIo::new(output, deadline)?
+                .take(maximum as u64 + 1)
+                .read_to_end(&mut bytes)?;
+            if bytes.len() > maximum {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Helper output exceeds limit",
+                ));
+            }
+            Ok(bytes)
+        })();
+        let _ = sender.send(result);
+    });
+    let result = (|| {
+        let mut status = None;
+        let mut bytes = None;
+        loop {
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Helper deadline exceeded",
+                ));
+            }
+            if bytes.is_none() {
+                match receiver.try_recv() {
+                    Ok(result) => bytes = Some(result?),
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        return Err(io::Error::other("Helper reader failed"));
+                    }
+                    Err(mpsc::TryRecvError::Empty) => (),
+                }
+            }
+            if status.is_none() {
+                status = child.try_wait()?;
+            }
+            if let (Some(status), Some(stdout)) = (status, bytes.as_mut()) {
+                return Ok(std::process::Output {
+                    status,
+                    stdout: std::mem::take(stdout),
+                    stderr: Vec::new(),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    })();
+    // This dedicated group contains only the ordinary helper and descendants;
+    // close descendants that retained stdout even after their parent exited.
+    // SAFETY: positive spawned PID is used as the dedicated process-group ID.
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+    let _ = child.wait();
+    let _ = reader.join(); // DeadlineIo bounds EOF, including descendants.
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+    #[test]
+    fn ordinary_helpers_bound_hangs_descendant_eof_output_and_total_deadline() {
+        for script in ["sleep 60", "sleep 60 & exit 0", "printf 123456789"] {
+            let started = Instant::now();
+            let error = bounded_output(
+                std::process::Command::new("/bin/sh").args(["-c", script]),
+                started + Duration::from_millis(80),
+                4,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::InvalidData
+            ));
+            assert!(started.elapsed() < Duration::from_secs(2));
+        }
+        let output = bounded_output(
+            std::process::Command::new("/bin/sh").args(["-c", "printf login"]),
+            Instant::now() + Duration::from_secs(2),
+            16,
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"login");
+        assert!(
+            bounded_output(
+                &mut std::process::Command::new("/bin/true"),
+                Instant::now(),
+                16
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn partial_input_and_descendant_held_eof_are_bounded() {
         let (read, mut writer) = UnixStream::pair().unwrap();

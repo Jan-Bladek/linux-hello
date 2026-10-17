@@ -11,13 +11,27 @@
 | KDE unlock | Own-UID launcher and real unprivileged password fallback tested; owner subsequently confirmed Win + L works | No independent unlock latency/accuracy/attack report |
 | Hyprland / Noctalia | Dedicated self-account `login` / `hyprlock` adapters, protocol/rollback/configuration regressions | Physical lock-screen unlock awaits owner confirmation; initial Hyprland sign-in reuses the existing display manager |
 | Software | Recorded default/feature Rust, Python, rendering, worker and privileged isolated-dispatch checks passed at their milestones | Counts below belong to each recorded commit, not one current aggregate |
-| Dependencies | Recorded audit snapshots have two unmaintained-dependency advisories and fail the strict gate | No fresh audit result is inferred from those snapshots |
+| Dependencies | 2026-10-17 follow-up: five maintenance advisories, zero known vulnerability entries; first-party IPC migrated to zbus 6 | Strict gate still fails; Slint/windowing legacy graph and native audit remain open |
 | Release qualification | Functional implementation and owner confirmations | Representative NIR FAR/FRR, PAD, independent privilege/key review, broad VM/RPM lifecycle and other desktops remain open |
 
 Current usage and activation are in [scope](index.md), [inference](inference.md),
 [sudo](sudo-integration.md), [KDE](kde-login.md) and
 [Hyprland / Noctalia](hyprland-noctalia.md). This document preserves evidence;
 it is not the installation guide.
+
+## Follow-up audit fixes — 2026-10-17
+
+The [follow-up tracker](audit-remediation-2026-10-17.md) maps all N01–N15 findings
+from the owner's private report of `ff502df` to implemented fixes, partial
+mitigations and open requirements. The original report/evidence remain local.
+[Recorded checks](audit-followup-validation.json) include actual private libpam
+case semantics, root runtime sudo-i policy, staged/retired profile recovery,
+persistent admission, ordinary-user helper deadlines and desktop partial-state
+reporting. First-party D-Bus code uses zbus 6 with isolated caller/denial regressions.
+The complete updated bundle was installed; existing TPM-backed reference and
+previous opt-ins validated. No population/PAD, owner face acceptance, physical
+power-loss or complete immutable-generation qualification is inferred. Strict
+advisories remain a failed release gate, not a suppressed warning.
 
 ## Hyprland / Noctalia / Hyprlock support — 2026-10-17
 

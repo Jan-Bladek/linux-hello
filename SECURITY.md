@@ -14,11 +14,15 @@ unavailable property is active is a security bug.
 
 ## Reporting
 
-The public repository is [Jan-Bladek/linux-hello](https://github.com/Jan-Bladek/linux-hello).
-No private security contact or response-time commitment is documented. Report
-suspected issues privately to the owner through an existing trusted channel.
-Do not post secrets or sensitive exploit details to public issues. A verified
-private reporting channel must be documented before inviting vulnerability reports.
+Use GitHub's **Report a vulnerability** on the
+[repository security page](https://github.com/Jan-Bladek/linux-hello/security),
+or open the [private reporting form](https://github.com/Jan-Bladek/linux-hello/security/advisories/new)
+while signed in. The security page exposed that reporting entry point when
+checked on 2026-10-17. No test report was sent, so delivery/triage has not been
+verified end to end. If the form is unavailable to your account, report only that
+the private channel is unavailable; do not put exploit details in a public issue.
+Do not post secrets or sensitive exploit details publicly. No response-time
+commitment or bounty is offered.
 
 Include the commit/version, operating system, affected component, expected and
 observed behavior, a minimal reproduction using synthetic inputs, and the security
@@ -45,6 +49,6 @@ independent audit, Fedora certification or physical anti-spoofing evaluation.
 Advisory exceptions must be narrow, documented, owned and periodically reviewed;
 do not ignore entire classes of warnings merely to make a check pass.
 
-The [2026-10-14 remediation tracker](docs/audit-remediation.md) distinguishes
+The [2026-10-17 follow-up tracker](docs/audit-remediation-2026-10-17.md) distinguishes
 implemented fixes from open qualification, dependency and recovery requirements.
 The technical audit is not evidence of validated PAD.
