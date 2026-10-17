@@ -37,6 +37,7 @@ the retained manual alternatives. Developer controls are hidden by default.
 - [Account controls and health](account-management.md): self-only status, pause, removal and sanitized support reports.
 - [Related-project comparison](project-comparison.md): reviewed workflows and adopted features.
 
+- [Complete Hyprland + Noctalia installer](install-hyprland-noctalia.md): full application installation and explicit ordered setup.
 - [Full Fedora installer](install-fedora.md): complete source installation and GUI activation.
 - [Installation](installation.md): default builds, diagnostics/RPMs and links to optional integrations.
 - [Inference](inference.md): exact model hashes, preprocessing, quality, lifecycle and GUI usage.

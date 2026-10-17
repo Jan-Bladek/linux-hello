@@ -55,6 +55,10 @@ Installation never enrolls a face, changes `/etc/pam.d`, activates an account or
 starts the diagnostic daemon. An update retains existing profiles, keys, thresholds
 and opt-ins. Other accounts' references are not deleted.
 
+For an existing Hyprland + Noctalia desktop, use
+[`./install-hyprland-noctalia.sh`](install-hyprland-noctalia.md) for desktop
+preflight and optional ordered activation. It delegates to this full installer.
+
 ## First run and activation
 
 Open **Linux Hello** from KDE's menu or run:

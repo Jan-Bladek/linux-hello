@@ -23,7 +23,15 @@ unchanged. An existing nonstandard stack requires review instead of replacement.
 
 ## Install and enable
 
-Run the [full installer](install-fedora.md) as your normal account. The existing
+The dedicated [complete installer](install-hyprland-noctalia.md) handles native
+dependencies, Rust, tests, models and the same full application bundle:
+
+```sh
+./install-hyprland-noctalia.sh --open-settings
+```
+
+Run it as your normal account. The generic [full installer](install-fedora.md)
+remains available. The existing
 `hello-pam/kde-pam` feature name is retained for compatibility; it now includes
 these self-account desktop lockers. Default diagnostic builds remain unauthoritative.
 No new model or re-enrollment is needed for a valid protected V1/V2 reference.

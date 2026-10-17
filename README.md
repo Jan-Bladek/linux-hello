@@ -48,6 +48,16 @@ selected uses through the GUI after installation. See the
 [complete installation guide](docs/install-fedora.md) for first-time setup,
 offline/build-only options, TPM, update and recovery.
 
+For an existing Hyprland + Noctalia 5.x desktop, use the complete profile installer:
+
+```sh
+./install-hyprland-noctalia.sh --open-settings
+```
+
+It installs the same full bundle and checks desktop compatibility. Explicit
+activation options and offline/update instructions are in the
+[Hyprland + Noctalia installation guide](docs/install-hyprland-noctalia.md).
+
 ## Build and run
 
 Use the pinned toolchain in `rust-toolchain.toml` and `Cargo.lock`. Install the

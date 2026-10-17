@@ -77,7 +77,7 @@ def rust(offline):
         rustup = str(local)
     installed = subprocess.check_output([rustup, 'toolchain', 'list'], text=True)
     if not any(line.startswith(channel + '-') for line in installed.splitlines()):
-        if offline: raise RuntimeError(f'Brak toolchainu {channel} w trybie offline.')
+        if offline: raise RuntimeError(f'Missing toolchain {channel} in offline mode.')
         run([rustup, 'toolchain', 'install', channel, '--profile', 'minimal', '--component', 'rustfmt', '--component', 'clippy'])
     return [rustup, 'run', channel, 'cargo']
 
