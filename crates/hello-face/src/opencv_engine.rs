@@ -8,7 +8,32 @@ use crate::{
 use opencv::{core, dnn, imgproc, objdetect, prelude::*};
 use sha2::{Digest, Sha256};
 use std::{fs::OpenOptions, io::Read, os::unix::fs::OpenOptionsExt, path::Path};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+// Owns only matrices allocated by this adapter. DNN internals and allocations
+// inside OpenCV remain outside this best-effort erasure boundary.
+struct SecretMat(core::Mat);
+impl std::ops::Deref for SecretMat {
+    type Target = core::Mat;
+    fn deref(&self) -> &core::Mat {
+        &self.0
+    }
+}
+impl SecretMat {
+    fn empty() -> Self {
+        Self(core::Mat::default())
+    }
+    fn wipe(&mut self) {
+        if let Ok(bytes) = self.0.data_bytes_mut() {
+            bytes.zeroize();
+        }
+    }
+}
+impl Drop for SecretMat {
+    fn drop(&mut self) {
+        self.wipe();
+    }
+}
 
 pub const DETECTOR_FILE: &str = "face_detection_yunet_2023mar.onnx";
 pub const RECOGNIZER_FILE: &str = "face_recognition_sface_2021dec.onnx";
@@ -97,7 +122,7 @@ impl OpenCvEngine {
             detector,
             recognizer,
         } = models;
-        let digest = Sha256::digest(&recognizer).into();
+        let digest = crate::pipeline_identity::digest()?;
         // Process-wide OpenCV setting. This adapter belongs in a diagnostic worker.
         cv(core::set_num_threads(1))?;
         let detector = cv(objdetect::FaceDetectorYN::create_1(
@@ -126,7 +151,7 @@ impl OpenCvEngine {
     }
 }
 
-fn bgr(frame: &Frame<'_>) -> Result<core::Mat, FaceError> {
+fn bgr(frame: &Frame<'_>) -> Result<SecretMat, FaceError> {
     frame.validate()?;
     let mut bytes = Zeroizing::new(Vec::with_capacity(frame.width * frame.height * 3));
     for row in frame.pixels.chunks_exact(frame.stride) {
@@ -145,7 +170,7 @@ fn bgr(frame: &Frame<'_>) -> Result<core::Mat, FaceError> {
     }
     let flat = cv(core::Mat::from_slice(&bytes))?;
     let shaped = cv(flat.reshape(3, frame.height as i32))?;
-    cv(shaped.try_clone())
+    cv(shaped.try_clone()).map(SecretMat)
 }
 
 fn monochrome(frame: &Frame<'_>) -> bool {
@@ -175,35 +200,37 @@ impl FaceEngine for OpenCvEngine {
         cv(self
             .detector
             .set_input_size(core::Size::new(frame.width as i32, frame.height as i32)))?;
-        let mut faces = core::Mat::default();
-        cv(self.detector.detect(&image, &mut faces))?;
+        let mut faces = SecretMat::empty();
+        cv(self.detector.detect(&*image, &mut faces.0))?;
         let needs_enhancement = faces.empty()
             || (faces.rows() == 1
                 && cv(faces.data_typed::<f32>())?[14] < crate::sampling::MIN_DETECTION_CONFIDENCE);
         if needs_enhancement && monochrome(frame) {
             // Howdy-style CLAHE on detector input only. SFace alignment/features
             // still use original pixels, preserving stored embedding semantics.
-            let mut gray = core::Mat::default();
+            let mut gray = SecretMat::empty();
             cv(imgproc::cvt_color(
-                &image,
-                &mut gray,
+                &*image,
+                &mut gray.0,
                 imgproc::COLOR_BGR2GRAY,
                 0,
                 core::AlgorithmHint::ALGO_HINT_DEFAULT,
             ))?;
-            let mut enhanced = core::Mat::default();
+            let mut enhanced = SecretMat::empty();
             let mut clahe = cv(imgproc::create_clahe(2.0, core::Size::new(8, 8)))?;
-            cv(clahe.apply(&gray, &mut enhanced))?;
-            let mut detector_image = core::Mat::default();
+            cv(clahe.apply(&*gray, &mut enhanced.0))?;
+            let mut detector_image = SecretMat::empty();
             cv(imgproc::cvt_color(
-                &enhanced,
-                &mut detector_image,
+                &*enhanced,
+                &mut detector_image.0,
                 imgproc::COLOR_GRAY2BGR,
                 0,
                 core::AlgorithmHint::ALGO_HINT_DEFAULT,
             ))?;
-            let mut enhanced_faces = core::Mat::default();
-            cv(self.detector.detect(&detector_image, &mut enhanced_faces))?;
+            let mut enhanced_faces = SecretMat::empty();
+            cv(self
+                .detector
+                .detect(&*detector_image, &mut enhanced_faces.0))?;
             // Do not turn a multi-face result into a single-face acceptance.
             if !enhanced_faces.empty()
                 && (faces.empty()
@@ -262,8 +289,8 @@ impl FaceEngine for OpenCvEngine {
         row[14] = detection.confidence;
         let flat = cv(core::Mat::from_slice(&row))?;
         let face = cv(flat.reshape(1, 1))?;
-        let mut aligned = core::Mat::default();
-        cv(self.recognizer.align_crop(&image, &face, &mut aligned))?;
+        let mut aligned = SecretMat::empty();
+        cv(self.recognizer.align_crop(&*image, &face, &mut aligned.0))?;
         if aligned.rows() != 112 || aligned.cols() != 112 || aligned.typ() != core::CV_8UC3 {
             return Err(FaceError::InvalidAlignedFace);
         }
@@ -291,8 +318,8 @@ impl FaceEngine for OpenCvEngine {
         let bytes = Zeroizing::new(aligned.values.iter().map(|v| *v as u8).collect::<Vec<_>>());
         let flat = cv(core::Mat::from_slice(&bytes))?;
         let image = cv(flat.reshape(3, 112))?;
-        let mut feature = core::Mat::default();
-        cv(self.recognizer.feature(&image, &mut feature))?;
+        let mut feature = SecretMat::empty();
+        cv(self.recognizer.feature(&image, &mut feature.0))?;
         if feature.typ() != core::CV_32F || feature.total() != 128 {
             return Err(FaceError::InvalidEmbedding);
         }
@@ -319,6 +346,32 @@ mod tests {
         assert!(verified_bytes(&link, 4, &digest).is_err());
         assert!(verified_bytes(directory.path(), 4, &digest).is_err());
         assert!(verified_bytes(&directory.path().join("missing"), 4, &digest).is_err());
+    }
+
+    #[test]
+    fn controlled_native_pixel_and_feature_buffers_are_erased() {
+        let pixels = vec![123u8; 16 * 16];
+        let mut image = bgr(&Frame {
+            width: 16,
+            height: 16,
+            stride: 16,
+            format: PixelFormat::Gray8,
+            pixels: &pixels,
+        })
+        .unwrap();
+        assert!(image.data_bytes().unwrap().iter().any(|b| *b != 0));
+        image.wipe();
+        assert!(image.data_bytes().unwrap().iter().all(|b| *b == 0));
+        let flat = core::Mat::from_slice(&[0.5f32; 128]).unwrap();
+        let mut feature = SecretMat(flat.try_clone().unwrap());
+        feature.wipe();
+        assert!(
+            feature
+                .data_typed::<f32>()
+                .unwrap()
+                .iter()
+                .all(|v| *v == 0.0)
+        );
     }
 
     #[test]

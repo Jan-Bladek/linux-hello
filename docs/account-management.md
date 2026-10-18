@@ -96,3 +96,11 @@ recognition. See [audit remediation](audit-remediation.md).
 
 For Noctalia 5.x or Hyprlock session unlocking, see
 [Hyprland and Noctalia activation](hyprland-noctalia.md).
+
+
+The 2026-10-18 [durable-operation update](audit-remediation-2026-10-18.md#durable-account-operations)
+retains root-private recovery preimages when a subprocess is killed or an
+administrator changes a managed file. An active journal disables biometric
+verification until reviewed recovery; passwords remain available. The helper
+refuses blind rollback of unrecorded content, mode or absence changes. New system
+profiles require TPM wrapping, and pipeline identity changes require re-enrollment.

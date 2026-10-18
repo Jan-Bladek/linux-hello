@@ -78,7 +78,7 @@ class AuditRegressions(unittest.TestCase):
             pam=root/'pam';pam.mkdir();service=pam/'plasmalogin'
             before=b'auth substack password-auth\n';service.write_bytes(before)
             marker=profile/'pam-plasmalogin.enabled'
-            def atomic(path,data,mode):path.write_bytes(data)
+            def atomic(path,data,mode):path.write_bytes(data);path.chmod(mode)
             def probe(*args):
                 self.assertFalse(marker.exists())
                 # Simulate an administrator edit after successful live checks.
@@ -102,7 +102,7 @@ class AuditRegressions(unittest.TestCase):
             state=Path(tmp);profile=state/'1000';profile.mkdir()
             marker=profile/'pam-kde.enabled';marker.write_bytes(b'previous-opt-in')
             companion=state/'companion';companion.write_bytes(b'previous-policy')
-            def atomic(path,data,mode):path.write_bytes(data)
+            def atomic(path,data,mode):path.write_bytes(data);path.chmod(mode)
             with patch.object(sudo,'ROOT',state),patch.object(sudo,'protected',side_effect=lambda p,private=False:p.stat()),\
                  patch.object(sudo,'atomic_write',side_effect=atomic),patch.object(sudo.subprocess,'run'):
                 with self.assertRaisesRegex(RuntimeError,'late label failure'):

@@ -127,11 +127,13 @@ def check_password_policy(service):
 
 
 @contextlib.contextmanager
-def setup_lock():
+def setup_lock(recovery=False):
     """Direct and nested managers use the same validated open file description."""
     path = ROOT / '.setup.lock'
     protected(ROOT / '.anchor', True)
     inherited = os.environ.get('LINUX_HELLO_SETUP_LOCK_FD')
+    if inherited is None and not recovery and ((ROOT / '.operation-update').exists() or (ROOT / '.install-update').exists()):
+        raise RuntimeError('Interrupted operation requires administrator recovery')
     if inherited is not None:
         fd = os.dup(int(inherited))
     else:
@@ -168,6 +170,11 @@ def write_transaction():
     This handles exceptions/signals, not SIGKILL or power loss.
     """
     before = {}; expected = {}; original_write = atomic_write
+    def current(path):
+        if not path.exists() and not path.is_symlink(): return None
+        meta = protected(path)
+        if meta.st_size > 8 * 1024 * 1024: raise RuntimeError('Snapshot exceeds limit')
+        return path.read_bytes(), stat.S_IMODE(meta.st_mode)
     def write(path, data, mode):
         path = Path(path)
         if path == ROOT / '.auth-epoch': return original_write(path,data,mode)
@@ -175,12 +182,10 @@ def write_transaction():
                 or path.parent == Path('/etc/pam.d')):
             return original_write(path, data, mode)
         if path not in before:
-            if path.exists() or path.is_symlink():
-                meta = protected(path)
-                if meta.st_size > 8 * 1024 * 1024: raise RuntimeError('Snapshot exceeds limit')
-                before[path] = (path.read_bytes(), stat.S_IMODE(meta.st_mode))
-            else: before[path] = None
-        expected[path] = data
+            before[path] = current(path)
+        elif current(path) != expected[path]:
+            raise RuntimeError('Administrator changed a managed file before publication')
+        expected[path] = (data, mode)
         original_write(path, data, mode)
     globals()['atomic_write'] = write
     try: yield
@@ -191,8 +196,9 @@ def write_transaction():
         try:
             for path, snapshot in reversed(list(before.items())):
                 try:
-                    if path.exists() and path.read_bytes() != expected[path]:
-                        if snapshot is not None and path.read_bytes() == snapshot[0]: continue
+                    state = current(path)
+                    if state == snapshot: continue
+                    if state != expected[path]:
                         raise RuntimeError('Administrator changed a managed file during rollback')
                     if snapshot is None: path.unlink(missing_ok=True)
                     else: original_write(path, snapshot[0], snapshot[1])
@@ -209,6 +215,28 @@ def bump_epoch():
     path = ROOT / '.auth-epoch'
     if path.exists() or path.is_symlink(): protected(path, True)
     atomic_write(path, os.urandom(32), 0o600)
+
+
+def operation_journal(root, paths, planned, validate, writer, begin=True):
+    """Fixed-sibling code and durable preimages; caller holds the setup lock."""
+    import importlib.util
+    source = Path(__file__).with_name('operation-journal.py')
+    validate(source)
+    spec = importlib.util.spec_from_file_location('hello_operation_journal', source)
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    def read(path):
+        if not path.exists() and not path.is_symlink(): return None
+        meta = validate(path, path.parent.parent == root and path.parent.name.isdecimal())
+        if meta.st_size > module.MAX_FILE: raise RuntimeError('Operation snapshot exceeds limit')
+        return path.read_bytes(), stat.S_IMODE(meta.st_mode)
+    def replace(path, before):
+        if path.exists() or path.is_symlink(): validate(path)
+        if before is None: path.unlink(missing_ok=True)
+        else: writer(path, before[0], before[1])
+        if path.exists(): subprocess.run(['/usr/sbin/restorecon', str(path)], check=True)
+    journal = module.Journal(root / '.operation-update', paths, read, replace)
+    if begin: journal.cleanup_retired()
+    return journal.begin(planned) if begin else journal
 
 
 def restore_snapshots(snapshots, write=None):

@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 """Fixed-path administrator installation. No PAM/profile activation or key access."""
+import contextlib
+import base64
+import importlib.util
 import fcntl
 import hashlib
 import json
@@ -21,7 +24,7 @@ MODELS = {'face_detection_yunet_2023mar.onnx': (232589, '8f2383e4dd3cfbb4553ea87
           'face_recognition_sface_2021dec.onnx': (38696353, '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79')}
 FILES = {'hello': 0o755, 'hello-settings': 0o755, 'hello-face-worker': 0o755,
          'hello-sudo': 0o755, 'hello-lock-verify': 0o4755, 'pam_linuxhello.so': 0o644,
-         'manage.py': 0o755, 'enroll-and-enable.sh': 0o755, 'manage-kde.py': 0o755,
+         'manage.py': 0o755, 'operation-journal.py': 0o644, 'recover-operation.py': 0o755, 'enroll-and-enable.sh': 0o755, 'manage-kde.py': 0o755,
          'activate-kde.sh': 0o755, 'activate-lock.sh': 0o755, 'activate-desktop.py': 0o755, 'configure-person.py': 0o755, 'manage-person.py': 0o755,
          'kde-pam-probe': 0o755, 'linuxhello_kde.pp': 0o644,
          'linuxhello_tpm.pp': 0o644}
@@ -145,6 +148,94 @@ def checked_policies(contents, existing, snapshots):
     return changes
 
 
+def journal_module():
+    source = Path(__file__).resolve().parents[1] / 'sudo/operation-journal.py'
+    spec = importlib.util.spec_from_file_location('hello_install_journal', source)
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
+@contextlib.contextmanager
+def attempt_lock():
+    fd = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally: os.close(fd)
+
+
+def installation_journal(paths, anchor_deferred):
+    def read(path):
+        meta = protected(path)
+        if meta is None: return None
+        if meta.st_size > 100_000_000: raise RuntimeError('Installed file exceeds snapshot limit')
+        return path.read_bytes(), stat.S_IMODE(meta.st_mode)
+    def replace(path, before):
+        if path == STATE / '.anchor':
+            anchor_deferred.append(before); return
+        if before is None:
+            protected(path); path.unlink(missing_ok=True)
+        else: atomic(path, before[0], before[1])
+        if path.exists(): run(['/usr/sbin/restorecon', str(path)])
+    return journal_module().Journal(STATE / '.install-update', paths, read, replace)
+
+
+def recover_installation(journal, anchor_deferred):
+    context = journal.context()
+    if not isinstance(context, dict) or set(context) != {'policies', 'added_context'}:
+        raise RuntimeError('Invalid installer recovery context')
+    for entry in journal.entries():
+        if entry['path'] == str(STATE / '.anchor'):
+            current = journal_module().fingerprint(journal.read(STATE / '.anchor'))
+            if current != entry['before'] and (entry['after'] is None or current != entry['after']['value']):
+                raise RuntimeError('Administrator anchor change; recovery refused')
+    (STATE / '.anchor').unlink(missing_ok=True); sync_dir(STATE)
+    atomic(STATE / '.auth-epoch', os.urandom(32), 0o600)
+    policies = context['policies']
+    if not isinstance(policies, list) or len(policies) > 2 or type(context['added_context']) is not bool:
+        raise RuntimeError('Invalid installer policy recovery')
+    existing = {line.split()[0] for line in subprocess.check_output(['/usr/sbin/semodule', '-l'], text=True).splitlines() if line.split()}
+    seen = set()
+    for entry in policies:
+        if set(entry) != {'name', 'before', 'after'} or entry['name'] not in ('linuxhello_kde', 'linuxhello_tpm') or entry['name'] in seen:
+            raise RuntimeError('Unknown policy recovery target')
+        seen.add(entry['name'])
+        old = None if entry['before'] is None else base64.b64decode(entry['before'], validate=True)
+        current = loaded_policy(entry['name']) if entry['name'] in existing else None
+        if current != old and (current is None or hashlib.sha256(current).hexdigest() != entry['after']):
+            raise RuntimeError('Administrator policy changed; automatic recovery refused')
+    # Keep the journal and missing anchor until files, labels and policy agree.
+    journal.rollback(finalize=False)
+    for entry in reversed(policies):
+        if entry['before'] is None:
+            if entry['name'] in existing: run(['/usr/sbin/semodule', '-r', entry['name']])
+        else:
+            old = base64.b64decode(entry['before'], validate=True)
+            path = BASE / (entry['name'] + '.pp')
+            if path.read_bytes() != old: raise RuntimeError('Restored policy differs from preimage')
+            run(['/usr/sbin/semodule', '-i', str(path)])
+            if loaded_policy(entry['name']) != old: raise RuntimeError('Policy recovery verification failed')
+    if context['added_context']:
+        probe = str(BASE / 'kde-pam-probe')
+        local = subprocess.check_output(['/usr/sbin/semanage', 'fcontext', '-l', '-C'], text=True)
+        entries = [line for line in local.splitlines() if line.split() and line.split()[0] == probe]
+        if entries and not all(':xdm_exec_t:' in line for line in entries):
+            raise RuntimeError('Administrator context changed; recovery refused')
+        if entries: run(['/usr/sbin/semanage', 'fcontext', '-d', probe])
+    if anchor_deferred:
+        before = anchor_deferred[-1]
+        if before is None: (STATE / '.anchor').unlink(missing_ok=True)
+        else: atomic(STATE / '.anchor', before[0], before[1])
+        sync_dir(STATE)
+    journal.commit()
+
+
+def recovery_targets():
+    return ({BASE / name for name in FILES if name != 'pam_linuxhello.so'} |
+            {BASE / 'models' / name for name in set(MODELS) | NOTICES} |
+            {BASE / 'install-manifest.json', PAM, BIN / 'linux-hello', BIN / 'hello', DESKTOP, STATE / '.anchor'})
+
+
 def install(manifest, contents):
     directory(BASE / 'models', 0o755)
     directory(BIN, 0o755)
@@ -154,8 +245,10 @@ def install(manifest, contents):
     lockpath = STATE / '.setup.lock'
     protected(lockpath, True)
     fd = os.open(lockpath, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
-    with os.fdopen(fd, 'rb') as lock:
+    with os.fdopen(fd, 'rb') as lock, attempt_lock():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if (STATE / '.operation-update').exists() or (STATE / '.operation-update').is_symlink():
+            raise RuntimeError('Recover the interrupted account operation before updating the bundle')
         updates = {}
         for name, data in contents.items():
             path = PAM if name == 'pam_linuxhello.so' else BASE / name
@@ -164,7 +257,8 @@ def install(manifest, contents):
         updates[BIN / 'hello'] = (b'#!/bin/sh\nexec /usr/local/libexec/linux-hello-sudo/hello "$@"\n', 0o755)
         updates[DESKTOP] = (DESKTOP_CONTENT, 0o644)
         updates[BASE / 'install-manifest.json'] = ((json.dumps(manifest, indent=2) + '\n').encode(), 0o600)
-        if protected(STATE / '.anchor', True) is None: updates[STATE / '.anchor'] = (b'', 0o600)
+        anchor_meta = protected(STATE / '.anchor', True)
+        updates[STATE / '.anchor'] = (b'' if anchor_meta is None else (STATE / '.anchor').read_bytes(), 0o600)
         snapshots = {}
         for path in updates:
             meta = protected(path)
@@ -177,37 +271,41 @@ def install(manifest, contents):
         if entries and not all(':xdm_exec_t:' in line for line in entries):
             raise RuntimeError('Existing probe SELinux override requires manual review')
         policy_changes = checked_policies(contents, existing, snapshots)
-        installed_modules = []; added_context = False
+        anchor_deferred = []
+        journal = installation_journal(updates, anchor_deferred)
+        journal.cleanup_retired()
+        planned = dict(updates)
+        if anchor_meta is not None: planned[STATE / '.anchor'] = None
+        context = {'policies': [{'name': module, 'before': None if previous is None else base64.b64encode(previous).decode(),
+                    'after': hashlib.sha256(contents[module + '.pp']).hexdigest()} for module, previous in policy_changes],
+                   'added_context': not bool(entries)}
+        journal.begin(planned, context)
         try:
-            for path, (data, mode) in updates.items(): atomic(path, data, mode)
+            # Old installed verifiers already require this anchor and recheck the
+            # epoch. Revoke before replacing any bundle file; restore anchor last.
+            (STATE / '.anchor').unlink(missing_ok=True); sync_dir(STATE)
+            atomic(STATE / '.auth-epoch', os.urandom(32), 0o600)
+            for path, (data, mode) in updates.items():
+                if path != STATE / '.anchor': atomic(path, data, mode)
             for module, previous in policy_changes:
-                installed_modules.append((module, previous))
                 run(['/usr/sbin/semodule', '-i', str(BASE / (module + '.pp'))])
                 if loaded_policy(module) != contents[module + '.pp']:
                     raise RuntimeError('Installed SELinux policy verification failed')
             if not entries:
-                run(['/usr/sbin/semanage', 'fcontext', '-a', '-t', 'xdm_exec_t', probe]); added_context = True
+                run(['/usr/sbin/semanage', 'fcontext', '-a', '-t', 'xdm_exec_t', probe])
             run(['/usr/sbin/restorecon', '-R', str(BASE), str(STATE), str(PAM), str(BIN / 'linux-hello'), str(BIN / 'hello'), str(DESKTOP)])
             for path in {p.parent for p in updates}: sync_dir(path)
+            atomic(STATE / '.anchor', *updates[STATE / '.anchor'])
+            journal.commit()
         except BaseException as original_error:
-            failures = []
             handlers = {sig: signal.signal(sig, signal.SIG_IGN)
                         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM)}
-            def recover(operation):
-                try: operation()
-                except BaseException as error: failures.append(error)
             try:
-                for path, before in snapshots.items():
-                    recover(lambda path=path, before=before: path.unlink(missing_ok=True) if before is None else atomic(path, before[0], before[1]))
-                if added_context: recover(lambda: run(['/usr/sbin/semanage', 'fcontext', '-d', probe]))
-                for module, previous in reversed(installed_modules):
-                    recover(lambda module=module, previous=previous: run(['/usr/sbin/semodule', '-r', module]) if previous is None
-                            else run(['/usr/sbin/semodule', '-i', str(BASE / (module + '.pp'))]))
-                for path in snapshots:
-                    if path.exists(): recover(lambda path=path: run(['/usr/sbin/restorecon', str(path)]))
+                recover_installation(journal, anchor_deferred)
+            except BaseException as recovery_error:
+                raise RuntimeError('Installation recovery incomplete; use password authentication and run installer --recover after review') from recovery_error
             finally:
                 for sig, handler in handlers.items(): signal.signal(sig, handler)
-            if failures: raise RuntimeError('Installation recovery incomplete; review installed files/policy before using biometrics') from original_error
             raise
     print('Full application installed. PAM, references and keys were retained; installed SELinux module contents were checked. No service was started.')
 
@@ -218,6 +316,19 @@ def main():
     signal.signal(signal.SIGTERM, cancelled)
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     os.umask(0o077)
+    if sys.argv[1] in ('--recover', '--cleanup-prepared'):
+        directory(STATE, 0o700)
+        lockpath = STATE / '.setup.lock'
+        protected(lockpath, True)
+        fd = os.open(lockpath, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        with os.fdopen(fd, 'rb') as lock, attempt_lock():
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            anchor_deferred = []
+            journal = installation_journal(recovery_targets(), anchor_deferred)
+            if sys.argv[1] == '--cleanup-prepared': journal.cleanup_prepared()
+            else: recover_installation(journal, anchor_deferred)
+        print('Unpublished prepare files removed.' if sys.argv[1] == '--cleanup-prepared' else 'Interrupted installation restored; password fallback retained.')
+        return
     owner = int(os.environ.get('SUDO_UID', str(os.getuid())))
     manifest, contents = read_bundle(Path(sys.argv[1]), owner)
     install(manifest, contents)

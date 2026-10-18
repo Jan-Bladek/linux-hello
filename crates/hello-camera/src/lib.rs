@@ -1,6 +1,15 @@
 //! Bounded, on-demand camera diagnostics. Camera pixels are not evidence of liveness.
 //! No frames are persisted by this crate. Linux device access is confined to `linux`.
 
+/// Source-bound acquisition contract for encrypted template compatibility.
+/// No camera data or hardware secrets are contained in these static sources.
+pub const ACQUISITION_SOURCES: &[&str] = &[
+    include_str!("lib.rs"),
+    include_str!("linux.rs"),
+    include_str!("emitter.rs"),
+    include_str!("../Cargo.toml"),
+];
+
 use serde::{Deserialize, Serialize};
 #[cfg(any(target_os = "linux", test))]
 use std::time::Instant;

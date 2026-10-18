@@ -153,13 +153,15 @@ def probe(user, content, service=None):
     driver = BASE / 'kde-pam-probe'
     sudo.protected(driver)
     service = service or detect()
-    with tempfile.TemporaryDirectory(prefix='kde-pam-test-', dir='/run' if service in LOCK_SERVICES else ROOT) as folder:
+    with tempfile.TemporaryDirectory(prefix='kde-pam-test-', dir='/run') as folder:
         conf = Path(folder)
         snapshot_pam(conf)
         import pwd
         account = pwd.getpwnam(user)
         profile = ROOT / str(account.pw_uid)
-        shadow = conf / 'profile'
+        shadow_root = conf / 'state'
+        shadow_root.mkdir(mode=0o700)
+        shadow = shadow_root / str(account.pw_uid)
         shadow.mkdir(mode=0o700)
         for name in ('config.json', 'template.lht', 'key', 'key.tpm'):
             source = profile / name
@@ -167,7 +169,8 @@ def probe(user, content, service=None):
                 meta = sudo.protected(source, True)
                 if meta.st_size > 1024 * 1024: raise RuntimeError('Profile exceeds test size limit')
                 sudo.atomic_write(shadow / name, source.read_bytes(), 0o600)
-        sudo.atomic_write(shadow / 'setup.lock', b'', 0o600)
+        sudo.atomic_write(shadow_root / '.setup.lock', b'', 0o600)
+        sudo.atomic_write(shadow_root / '.anchor', b'', 0o600)
         sudo.atomic_write(shadow / f'pam-{service}.enabled', b'linux-hello-login-v1\n', 0o600)
         command=['/usr/bin/runcon','-u','system_u','-r','system_r','-t','xdm_t','-l','s0-s0:c0.c1023',str(driver),service,user,str(conf)]
         if service in LOCK_SERVICES:
@@ -179,9 +182,12 @@ def probe(user, content, service=None):
             command=['/usr/bin/setpriv','--reuid',str(account.pw_uid),'--regid',str(account.pw_gid),'--init-groups',str(driver),service,user,str(conf)]
         # Mounting happens before entering xdm_t/dropping UID; neither probe
         # can opt the production profile in. The child namespace dies with it.
-        binding = "import subprocess,sys,os; subprocess.run(['/usr/bin/mount','--bind',sys.argv[1],sys.argv[2]],check=True); subprocess.run(['/usr/bin/mount','--bind',sys.argv[3],sys.argv[4]],check=True); subprocess.run(['/usr/bin/mount','--bind',sys.argv[5],'/etc/pam.d'],check=True); os.execv(sys.argv[6],sys.argv[6:])"
+        # Replace the entire state root in this namespace, not just the UID
+        # directory: an outer durable operation must still block production PAM.
+        # The probe has its own empty lock/anchor and no production journal.
+        binding = "import subprocess,sys,os; subprocess.run(['/usr/bin/mount','--bind',sys.argv[1],sys.argv[2]],check=True); subprocess.run(['/usr/bin/mount','--bind',sys.argv[3],'/etc/pam.d'],check=True); os.execv(sys.argv[4],sys.argv[4:])"
         command = ['/usr/bin/unshare', '--mount', '--propagation', 'private',
-                   '/usr/bin/python3', '-c', binding, str(shadow), str(profile), str(shadow / 'setup.lock'), str(ROOT / '.setup.lock'), str(conf), *command]
+                   '/usr/bin/python3', '-c', binding, str(shadow_root), str(ROOT), str(conf), *command]
         mode=0o644 if service in LOCK_SERVICES else 0o600
         # First prove that this adapter itself matched, independently of any
         # pre-existing permit/other credential module in the vendor stack.
@@ -191,10 +197,16 @@ def probe(user, content, service=None):
             for path in conf.iterdir():
                 if path.is_file(): path.chmod(0o644)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
+        # These temporary copies model /var/lib state, retaining the existing
+        # xdm_t read boundary without granting new SELinux access.
+        subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)], check=True)
         run_probe(command,1)
         sudo.atomic_write(conf / service, content, mode)
         sudo.atomic_write(conf / layout(service)[2], diagnostic_stack(auth_stack(service).encode()), mode)
         subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
+        # These temporary copies model /var/lib state, retaining the existing
+        # xdm_t read boundary without granting new SELinux access.
+        subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)], check=True)
         # Identical SELinux domain to the real Plasma/SDDM root helper. Probe
         # authenticates/checks account/credentials but opens no desktop session.
         run_probe(command,2)

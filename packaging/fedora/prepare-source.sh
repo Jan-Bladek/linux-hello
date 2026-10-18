@@ -18,7 +18,7 @@ fi
 stage=$(mktemp -d)
 trap 'test -n "$stage" && test -d "$stage" && rm -rf -- "$stage"' EXIT
 mkdir -p -- "$stage/linux-hello-0.1.0-dev"
-tar -C "$source_root" --exclude='./.git' --exclude='./target' --exclude='./vendor' --exclude='./work' -cf - . |
+tar -C "$source_root" --exclude='./.git' --exclude='./target' --exclude='./vendor' --exclude='./work' --exclude='./AUDIT_REPORT.md' -cf - . |
   tar -C "$stage/linux-hello-0.1.0-dev" -xf -
 cd -- "$stage/linux-hello-0.1.0-dev"
 mkdir -p .cargo

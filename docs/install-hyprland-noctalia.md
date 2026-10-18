@@ -116,7 +116,7 @@ face never counts as successful activation. See
 | `--build-only` | Prepare tests/build/models/staging without installing application files; cannot combine with activation or GUI launch |
 | `--skip-deps` | Skip DNF; dependencies must already exist |
 | `--offline` | Use cached Rust/crates/models; requires `--skip-deps` |
-| `--with-tpm` | Include optional TPM policy; no key migration, TPM reset or boot-state attestation |
+| `--with-tpm` | Compatibility flag; policy is included by default, without key migration, reset or boot attestation |
 | `--enroll-sudo` | Explicit protected import of an existing encrypted GUI reference and live sudo activation |
 | `--activate-login` | Two live checks and activation of the existing supported display manager |
 | `--activate-unlock` | Two live checks and Noctalia unlock setup |
@@ -137,8 +137,10 @@ git pull --ff-only
 ./install-hyprland-noctalia.sh
 ```
 
-Updates do not require re-enrollment. Existing TPM-wrapped keys and installed
-policies remain available even when `--with-tpm` is omitted. See
+The 2026-10-18 full-pipeline identity update requires
+[fresh enrollment after deployment](audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment).
+Existing key providers are retained, and new system profiles require TPM wrapping.
+The TPM access policy is included by default. See
 [TPM migration and limits](tpm.md) for deliberate key migration, and
 [installation recovery](install-fedora.md#files-upgrades-and-recovery) before
 removing deployed PAM helpers. No validated PAD or representative NIR FAR/FRR

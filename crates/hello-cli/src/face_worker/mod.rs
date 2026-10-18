@@ -24,7 +24,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub const WALL_SECONDS: u64 = 8;
 pub const MAX_WIDTH: u32 = 1920;
 pub const MAX_HEIGHT: u32 = 1080;
-const READY: &[u8; 8] = b"LHRDY003";
+const READY: &[u8; 8] = b"LHRDY004";
 const MAX_REPLY: usize = 4096;
 pub const MAX_STREAM_FRAMES: usize = 192;
 const SESSION_SECONDS: u64 = 60;
@@ -65,14 +65,9 @@ impl Diagnostic {
         {
             return Err("invalid inference worker reply".into());
         }
-        if let Some(embedding) = &self.embedding {
-            let digest: String = embedding
-                .model_digest()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
-            if embedding.dimensions() != 128
-                || digest != RECOGNIZER_SHA256
+        if let Some(embedding) = &self.embedding
+            && (embedding.dimensions() != 128
+                || embedding.model_digest() != hello_face::pipeline_identity::digest()?
                 || self.faces != Some(1)
                 || self.geometry.is_none()
                 || self.sample_quality.is_none_or(|quality| {
@@ -81,10 +76,9 @@ impl Diagnostic {
                 || !self.quality.has_signal()
                 || !self
                     .confidence
-                    .is_some_and(|v| v >= hello_face::sampling::MIN_DETECTION_CONFIDENCE)
-            {
-                return Err("inference worker returned incompatible biometric data".into());
-            }
+                    .is_some_and(|v| v >= hello_face::sampling::MIN_DETECTION_CONFIDENCE))
+        {
+            return Err("inference worker returned incompatible biometric data".into());
         }
         Ok(())
     }
@@ -92,7 +86,7 @@ impl Diagnostic {
     /// Deliberately excludes biometric vectors and landmark coordinates.
     pub fn metadata(&self) -> serde_json::Value {
         serde_json::json!({"diagnostic_passed": self.embedding.is_some(),
-            "recognizer_sha256":RECOGNIZER_SHA256,"preprocessing":"opencv_sface_bgr8_to_rgb_nchw_raw_v1",
+            "recognizer_sha256":RECOGNIZER_SHA256,"pipeline_identity":hello_face::pipeline_identity::current().ok(),"preprocessing":"opencv_sface_bgr8_to_rgb_nchw_raw_v1",
             "embedding_dimensions": self.embedding.as_ref().map(Embedding::dimensions),
             "rejection": self.failure.as_ref().map(ToString::to_string),
             "quality_failure_reason":self.sample_quality.and_then(|q| q.rejection(self.confidence.unwrap_or(0.0))),
@@ -564,6 +558,13 @@ mod tests {
         assert!(stub("exit 7", Duration::from_secs(1)).initialize().is_err());
     }
     #[test]
+    fn recognizer_only_worker_protocol_is_rejected_before_capture() {
+        let worker = stub("printf LHRDY003; sleep 60", Duration::from_secs(1));
+        let pid = worker.child.id();
+        assert!(worker.initialize().is_err());
+        assert!(!Path::new(&format!("/proc/{pid}")).exists());
+    }
+    #[test]
     fn cancellation_reaps_without_waiting_for_native_completion() {
         let worker = stub("sleep 60", Duration::from_secs(8));
         let pid = worker.child.id();
@@ -574,7 +575,7 @@ mod tests {
     #[test]
     fn oversized_reply_and_blocked_input_fail_within_deadline() {
         let worker = stub(
-            "printf LHRDY003; printf '\\377\\377\\377\\377'; sleep 60",
+            "printf LHRDY004; printf '\\377\\377\\377\\377'; sleep 60",
             Duration::from_millis(100),
         )
         .initialize()
@@ -582,7 +583,7 @@ mod tests {
         let pid = worker.child.id();
         assert!(worker.infer(16, 16, &[127; 16 * 16 * 3]).is_err());
         assert!(!Path::new(&format!("/proc/{pid}")).exists());
-        let worker = stub("printf LHRDY003; sleep 60", Duration::from_millis(100))
+        let worker = stub("printf LHRDY004; sleep 60", Duration::from_millis(100))
             .initialize()
             .unwrap();
         let pid = worker.child.id();
@@ -600,7 +601,7 @@ mod tests {
     #[test]
     fn stream_budget_deadline_and_cancellation_reap_the_child() {
         for condition in 0..3 {
-            let mut worker = stub("printf LHRDY003; sleep 60", Duration::from_secs(1))
+            let mut worker = stub("printf LHRDY004; sleep 60", Duration::from_secs(1))
                 .initialize()
                 .unwrap();
             worker.streaming = true;

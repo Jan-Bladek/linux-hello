@@ -14,12 +14,30 @@ pub(super) fn read_lock() -> Result<std::fs::File, Error> {
     if std::env::var_os("LINUX_HELLO_SETUP_LOCK_FD").is_some() {
         return setup_lock();
     }
+    // Delegated provisioning above is authenticated by the exclusive lock FD.
+    // Ordinary PAM cannot authorize against an interrupted multi-file operation.
+    operation_ready(Path::new(boundary::ROOT))?;
     let file = protected_file(&Path::new(boundary::ROOT).join(".setup.lock"), true, 1024)?;
     // SAFETY: file is a validated owned descriptor; shared locking cannot mutate data.
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
         return Err("Account configuration is changing; use your password".into());
     }
     Ok(file)
+}
+
+fn operation_ready(root: &Path) -> Result<(), Error> {
+    for marker in [".operation-update", ".install-update"] {
+        match fs::symlink_metadata(root.join(marker)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            _ => {
+                return Err(
+                    "Interrupted system operation; use your password and recover the journal"
+                        .into(),
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn setup_lock() -> Result<std::fs::File, Error> {
@@ -69,6 +87,9 @@ impl AttemptLease {
         if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             return Err("Face verification busy; use password authentication".into());
         }
+        // Close the startup check/lease race with an interrupted installer.
+        // A process paused before flock must not use a removed old anchor.
+        protected_file(&Path::new(boundary::ROOT).join(".anchor"), true, 1024)?;
         Ok(Self(file))
     }
 }
@@ -151,4 +172,89 @@ pub(super) fn profile_snapshot(uid: u32) -> Result<Zeroizing<Vec<u8>>, Error> {
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+    #[test]
+    #[ignore = "root private mount namespace with synthetic marker required"]
+    fn actual_reader_refuses_interrupted_operations_in_private_state() {
+        let root = Path::new(boundary::ROOT);
+        assert_eq!(
+            fs::read(root.join(".audit-test-only")).unwrap(),
+            b"synthetic-only\n"
+        );
+        assert_ne!(
+            fs::read_link("/proc/self/ns/mnt").unwrap(),
+            fs::read_link("/proc/1/ns/mnt").unwrap()
+        );
+        // SAFETY: getuid is an integer-only credential query.
+        assert_eq!(unsafe { libc::getuid() }, 0);
+        assert!(read_lock().is_ok());
+        for name in [".operation-update", ".install-update"] {
+            let path = root.join(name);
+            fs::create_dir(&path).unwrap();
+            assert!(
+                read_lock()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Interrupted system operation")
+            );
+            fs::remove_dir(path).unwrap();
+            assert!(read_lock().is_ok());
+        }
+        // Operational loss of a declared TPM blob must not revive a leftover
+        // legacy key. This exercises real protected-file reads without a TPM.
+        let uid = 1003;
+        let dir = directory(uid);
+        fs::create_dir(&dir).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        let mut config = crate::Config {
+            version: 1,
+            uid,
+            device: "/dev/video2".into(),
+            identity: Default::default(),
+            threshold: 0.8,
+            experimental_without_validated_pad: true,
+            key_provider: Some(crate::KeyProvider::Tpm),
+        };
+        write_private(
+            &dir.join("config.json"),
+            &serde_json::to_vec(&config).unwrap(),
+        )
+        .unwrap();
+        write_private(&dir.join("key"), &[7; 32]).unwrap();
+        let error = match crate::key(uid) {
+            Ok(_) => panic!("lost TPM must not fall back"),
+            Err(e) => e.to_string(),
+        };
+        assert!(error.contains("plaintext fallback is forbidden"));
+        config.key_provider = Some(crate::KeyProvider::File);
+        fs::write(
+            dir.join("config.json"),
+            serde_json::to_vec(&config).unwrap(),
+        )
+        .unwrap();
+        assert!(crate::key(uid).is_ok());
+    }
+
+    #[test]
+    fn pending_operation_markers_of_any_type_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(operation_ready(dir.path()).is_ok());
+        for name in [".operation-update", ".install-update"] {
+            let path = dir.path().join(name);
+            fs::create_dir(&path).unwrap();
+            assert!(operation_ready(dir.path()).is_err());
+            fs::remove_dir(&path).unwrap();
+            fs::write(&path, b"invalid-marker").unwrap();
+            assert!(operation_ready(dir.path()).is_err());
+            fs::remove_file(&path).unwrap();
+            std::os::unix::fs::symlink("missing", &path).unwrap();
+            assert!(operation_ready(dir.path()).is_err());
+            fs::remove_file(&path).unwrap();
+        }
+    }
 }

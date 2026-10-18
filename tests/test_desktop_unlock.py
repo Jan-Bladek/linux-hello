@@ -80,7 +80,7 @@ class DesktopUnlock(unittest.TestCase):
             for service in manager.LOCK_SERVICES:
                 for p in (profile,other): (p/f'pam-{service}.enabled').write_bytes(account.MAGIC)
             sudo=SimpleNamespace(ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),
-                                 bump_epoch=lambda:None,atomic_write=lambda p,b,mode:p.write_bytes(b),
+                                 operation_journal=manager.sudo.operation_journal,bump_epoch=lambda:None,atomic_write=lambda p,b,mode:(p.write_bytes(b),p.chmod(mode)),
                                  child_environment=lambda:{},child_lock_options=lambda:{})
             calls=[]
             def run(args,**kwargs):
@@ -101,7 +101,7 @@ class DesktopUnlock(unittest.TestCase):
                 fake=SimpleNamespace(auth_lines=manager.sudo.auth_lines,bump_epoch=lambda:None,PREAUTH=manager.sudo.PREAUTH,
                                      protected=lambda p,private=False:SimpleNamespace(st_mode=0o100644),
                                      check_password_policy=lambda name:(policy,b'policy'),
-                                     atomic_write=lambda p,b,mode:p.write_bytes(b))
+                                     atomic_write=lambda p,b,mode:(p.write_bytes(b),p.chmod(mode)))
                 real_path=Path
                 def paths(value):
                     if value=='/etc/pam.d': return pam

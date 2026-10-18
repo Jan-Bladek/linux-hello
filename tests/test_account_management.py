@@ -1,3 +1,4 @@
+import os
 import importlib.util
 import json
 from pathlib import Path
@@ -35,8 +36,8 @@ class AccountManagementTests(unittest.TestCase):
             for service in ('plasmalogin','kde'): (owner/f'pam-{service}.enabled').write_bytes(m.MAGIC)
         sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',MARKER='# sudo\n',LINE='auth sufficient face\n',
             child_environment=lambda:{'LANG':'C.UTF-8'},child_lock_options=lambda:{},
-            protected=lambda p,private=False:p.stat(),atomic_write=lambda p,b,mode:p.write_bytes(b),
-            restore_snapshots=lambda snapshots: recovery.restore_snapshots(snapshots, lambda p,b,mode:p.write_bytes(b)))
+            protected=lambda p,private=False:p.stat(),atomic_write=lambda p,b,mode:(p.write_bytes(b),p.chmod(mode)),
+            operation_journal=recovery.operation_journal,restore_snapshots=lambda snapshots: recovery.restore_snapshots(snapshots, lambda p,b,mode:(p.write_bytes(b),p.chmod(mode))))
         kde=SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','face-substack','system-auth'),SERVICES=('plasmalogin','sddm'),SUBSTACK='face-substack',MARKER='# kde\n',LINE='auth substack face\n')
         (pam/'sudo').write_text(sudo.MARKER+sudo.LINE)
         for service in ('plasmalogin','kde'): (pam/service).write_text(kde.MARKER+kde.LINE)

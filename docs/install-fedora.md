@@ -90,7 +90,7 @@ remove your protected system reference; see [account management](account-managem
 | `./install.sh --build-only` | Prepare dependencies, tests, binaries and staging without installing application files |
 | `./install.sh --skip-deps` | Skip DNF; native dependencies must already be installed |
 | `./install.sh --skip-deps --offline` | No network; requires toolchain, Cargo cache, native libraries and valid models |
-| `./install.sh --with-tpm` | Also install the optional TPM access policy for KDE sign-in |
+| `./install.sh --with-tpm` | Compatibility flag; TPM access policy is now included by default |
 
 `--build-only` alone can install dependencies with DNF. Add `--skip-deps` to skip
 that step. Example for an already provisioned workstation:
@@ -99,7 +99,9 @@ that step. Example for an already provisioned workstation:
 ./install.sh --build-only --skip-deps --offline --with-tpm
 ```
 
-`--with-tpm` neither migrates keys nor resets the TPM. After reference provisioning
+Installing TPM policy neither migrates keys nor resets the TPM. New system profiles
+require wrapping and unseal; failure has no plaintext fallback. Existing file-key
+profiles require explicit migration. After reference provisioning
 and successful activation, an administrator can explicitly migrate the existing key:
 
 ```sh
@@ -108,8 +110,7 @@ sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-status "$(id -u)"
 ```
 
 Migration does not require another scan. Read [TPM limits and recovery](tpm.md)
-first. Updates without `--with-tpm` retain an already sealed profile and installed
-TPM policy. This mode does not attest boot state.
+first. The policy is included by default and existing providers are retained. This mode does not attest boot state.
 
 ## Files, upgrades and recovery
 
@@ -158,3 +159,18 @@ See [audit remediation](audit-remediation.md#recovery-and-upgrade).
 
 For Noctalia 5.x or Hyprlock session unlocking, see
 [Hyprland and Noctalia activation](hyprland-noctalia.md).
+
+
+## 2026-10-18 pipeline and interruption update
+
+Deploy the whole bundle and [re-enroll the face](audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment).
+Old pipeline references remain parseable but cannot authenticate with the new
+identity. Password fallback remains available. This update does not silently
+replace an existing key or change its PCR/rollback policy.
+
+The installer now keeps a durable preimage journal and disables biometric startup
+while files/policy are changing. After an interruption, use the
+[reviewed recovery procedure](audit-remediation-2026-10-18.md#durable-account-operations).
+Recovery refuses unknown administrator changes; it does not guess their intent.
+The implementation still uses sequential replacement rather than immutable
+bundle generations. Reboot/SELinux interruption qualification remains open.

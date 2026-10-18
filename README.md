@@ -106,9 +106,11 @@ worker limits are in [inference](docs/inference.md).
 **Stop** cancels capture and awaits cleanup. **Resume scan** resumes accepted
 samples; **Cancel enrollment** preserves the previous reference. A scan alone does not change the system reference. **Save and set up**
 updates the protected reference and selected services after administrator
-authorization; ordinary failures restore the previous system state. Complete existing
-V1/V2 references remain supported; re-enroll to obtain V2 pose-aware scoring or
-when changing incompatible models. Details are in [biometrics](docs/biometrics.md)
+authorization. Interrupted system changes use a durable recovery journal; unknown
+changes require administrator review. V1/V2 files remain readable, but the
+[2026-10-18 pipeline update](docs/audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment)
+requires fresh enrollment after installing the complete matching bundle. New
+system profiles require TPM wrapping; legacy providers require explicit migration. Details are in [biometrics](docs/biometrics.md)
 and [inference](docs/inference.md).
 
 ## System setup from the GUI

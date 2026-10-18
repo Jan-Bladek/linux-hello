@@ -9,7 +9,8 @@ manual diagnostic builds and the separate diagnostic-only RPM specification.
 
 Version 0.1.0-dev is a development preview. These steps build real camera
 diagnostics and a desktop preview; they do not enable facial authentication. The
-production model/PAD and measured-boot qualification gates remain closed. Optional [TPM key wrapping](tpm.md) is separate. A separate explicit
+production model/PAD and measured-boot qualification gates remain closed. [TPM key wrapping](tpm.md) is required for new system profiles; existing legacy
+providers need explicit migration. A separate explicit
 experimental sudo/KDE login/unlock opt-ins are linked at the end of this document.
 
 ## Fedora development build

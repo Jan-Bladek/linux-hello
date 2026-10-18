@@ -106,7 +106,7 @@ detection confidence, embedding status, pinned recognizer/preprocessing, centroi
 and exemplar score components, template version, selected count, failure reason,
 active GUI threshold, latency and native CPU/RSS. Latest-frame reports contain
 metadata only, with no recursive report history. Embeddings/landmarks/images are
-not logged. Worker readiness is `LHRDY003`; mismatched binaries fail before capture.
+not logged. Worker readiness is `LHRDY004`; mismatched binaries fail before capture.
 
 ## Why SCRFD + ArcFace + ONNX Runtime was not enabled
 
@@ -211,3 +211,8 @@ passive_front, retain motion_challenge_passed=false and pad_validated=false, and
 still require every accepted frame to satisfy all identity gates. Existing V1/V2
 references remain compatible. This workflow change needs no model/template
 migration or extra enrollment. See the current inference workflow for limits.
+
+
+The 2026-10-18 [pipeline identity update](audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment)
+requires re-enrollment after installation. Historical compatibility notes above
+do not authorize rebinding an old recognizer-only reference to the new pipeline.

@@ -20,7 +20,7 @@ PACKAGES = ['git', 'gcc', 'gcc-c++', 'clang-devel', 'pkgconf-pkg-config', 'openc
             'python3', 'sudo', 'systemd', 'polkit', 'checkpolicy', 'policycoreutils', 'policycoreutils-python-utils',
             'selinux-policy-devel']
 BINS = ['hello', 'hello-settings', 'hello-face-worker', 'hello-sudo', 'hello-lock-verify']
-SCRIPTS = {'sudo': ['manage.py', 'enroll-and-enable.sh'],
+SCRIPTS = {'sudo': ['manage.py', 'enroll-and-enable.sh', 'operation-journal.py', 'recover-operation.py'],
            'kde': ['manage-kde.py', 'activate-kde.sh', 'activate-lock.sh', 'activate-desktop.py', 'configure-person.py', 'manage-person.py']}
 
 
@@ -130,7 +130,7 @@ def main():
     parser.add_argument('--build-only', action='store_true', help='Build and verify without installing application files.')
     parser.add_argument('--skip-deps', action='store_true', help='Skip dnf; dependencies must already be installed.')
     parser.add_argument('--offline', action='store_true', help='No network; requires cached models, crates and toolchain.')
-    parser.add_argument('--with-tpm', action='store_true', help='Add the optional TPM SELinux policy without migrating keys.')
+    parser.add_argument('--with-tpm', action='store_true', default=True, help='Include TPM SELinux policy (default); existing keys are not migrated.')
     args = parser.parse_args()
     if os.geteuid() == 0: raise RuntimeError('Run ./install.sh as your regular user, without sudo. The installer requests authorization when needed.')
     os.umask(0o077)
@@ -172,7 +172,7 @@ def main():
         run(['/usr/bin/sudo', '/usr/bin/python3', '-B', REPO / 'packaging/installer/install-root.py', stage])
     desktop()
     print('Ready! Open Linux Hello from your application launcher or run linux-hello.\nScan → name → select uses → Save and set up.\nUse a separate reference passphrase; system authorization uses your account password.')
-    if args.with_tpm: print('After saving and activating a reference: sudo /usr/local/libexec/linux-hello-sudo/hello-sudo tpm-enable ' + str(os.getuid()))
+    if args.with_tpm: print('New system profiles require TPM wrapping. Existing file-key profiles require an explicit tpm-enable migration; copied historical keys are not erased.')
 
 
 if __name__ == '__main__':

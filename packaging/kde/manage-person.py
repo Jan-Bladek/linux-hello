@@ -82,6 +82,7 @@ def status(account, sudo, kde):
         if present(profile / 'config.json'):
             if (profile / 'config.json').stat().st_size > 16384: raise RuntimeError('Configuration exceeds its size limit')
             config = json.loads((profile / 'config.json').read_bytes())
+            if config.get('key_provider') == 'tpm': backend = 'tpm'
             threshold = config.get('threshold')
             valid = (config.get('uid') == account.pw_uid and config.get('version') == 1
                      and type(threshold) in (float, int) and math.isfinite(threshold)
@@ -106,6 +107,8 @@ def status(account, sudo, kde):
 
 def operate(action, account, sudo, kde, acknowledge=None):
     if action not in ('status', 'pause', 'remove'): raise RuntimeError('Unknown account operation')
+    if action == 'status' and ((sudo.ROOT / '.operation-update').exists() or (sudo.ROOT / '.install-update').exists()):
+        raise RuntimeError('Interrupted system operation requires administrator recovery')
     uid = account.pw_uid; profile = sudo.ROOT / str(uid)
     if action == 'status' or not private_profile(profile, uid):
         result = status(account, sudo, kde)
@@ -117,13 +120,11 @@ def operate(action, account, sudo, kde, acknowledge=None):
     paths += [sudo.PAM]
     for service in (*kde.SERVICES, *kde.LOCK_SERVICES):
         paths += [PAM_DIR / service, PAM_DIR / kde.layout(service)[2]]
-    snapshots = {}
-    for path in paths:
-        if present(path):
-            meta = sudo.protected(path, path.parent == profile)
-            if meta.st_size > 8 * 1024 * 1024: raise RuntimeError('Management snapshot exceeds its size limit')
-            snapshots[path] = (path.read_bytes(), stat.S_IMODE(meta.st_mode))
-        else: snapshots[path] = None
+    planned = {profile / 'pam-sudo.disabled': (b'linux-hello-sudo-disabled-v1\n', 0o600)}
+    planned.update({profile / f'pam-{service}.enabled': None for service in (*kde.SERVICES, *kde.LOCK_SERVICES)})
+    if action == 'remove':
+        planned.update({profile / name: None for name in ('key', 'key.tpm', 'template.lht', 'config.json')})
+    journal = sudo.operation_journal(sudo.ROOT, paths, planned, sudo.protected, sudo.atomic_write)
     try:
         sudo.bump_epoch()
         # Disable only this UID. Never globally disable sudo for other accounts.
@@ -144,9 +145,10 @@ def operate(action, account, sudo, kde, acknowledge=None):
         if any(result[name] for name in ('sudo', 'login', 'unlock')):
             raise RuntimeError('Account uses were not fully disabled')
         if acknowledge: acknowledge(result)
+        journal.commit()
         return result
     except BaseException:
-        sudo.restore_snapshots(snapshots)
+        journal.rollback()
         raise
 
 
@@ -177,5 +179,5 @@ def main():
 if __name__ == '__main__':
     try: main()
     except Exception:
-        print(json.dumps({'error': 'Account operation failed. Previous authentication was retained where rollback was possible; use your password and check the installation.'}), flush=True)
+        print(json.dumps({'error': 'Account operation failed. Use your password. Interrupted or conflicting changes require administrator review of the durable operation journal.'}), flush=True)
         sys.exit(1)

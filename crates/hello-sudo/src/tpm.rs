@@ -159,18 +159,83 @@ pub(super) fn load(uid: u32) -> Result<Option<hello_storage::SecretKey>, Error> 
         Err(error) => Err(error.into()),
     }
 }
+/// New profiles require independent TPM wrapping. Never create a plaintext key
+/// and never fall back if sealing or unsealing fails. Existing legacy profiles
+/// remain readable until an administrator explicitly migrates them.
+pub(super) fn create_key(uid: u32) -> Result<hello_storage::SecretKey, Error> {
+    name(uid)?;
+    for name in ["key", "key.tpm", ".key-tpm-pending"] {
+        match fs::symlink_metadata(directory(uid).join(name)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            _ => {
+                return Err(
+                    "Existing key provider or pending TPM operation requires review".into(),
+                );
+            }
+        }
+    }
+    let mut secret = Zeroizing::new([0; 32]);
+    getrandom::fill(&mut *secret)?;
+    let blob = execute(uid, Stdio::piped(), Some(&secret))?;
+    persist_new_key(&directory(uid), &blob, |pending| {
+        unseal(uid, protected_file(pending, true, MAX_BLOB)?)
+    })
+}
+fn persist_new_key(
+    dir: &Path,
+    blob: &[u8],
+    recover: impl FnOnce(&Path) -> Result<hello_storage::SecretKey, Error>,
+) -> Result<hello_storage::SecretKey, Error> {
+    for name in ["key", "key.tpm", ".key-tpm-pending"] {
+        match fs::symlink_metadata(dir.join(name)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            _ => {
+                return Err(
+                    "Existing key provider or pending TPM operation requires review".into(),
+                );
+            }
+        }
+    }
+    let pending = dir.join(".key-tpm-pending");
+    let result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&pending)?;
+        file.write_all(blob)?;
+        file.sync_all()?;
+        let recovered = recover(&pending)?;
+        fs::rename(&pending, dir.join("key.tpm"))?;
+        File::open(dir)?.sync_all()?;
+        Ok(recovered)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&pending);
+    }
+    result
+}
+
 /// Explicit root migration; verify full template before removing the old key.
 /// Shares the GUI setup lock. Never changes PAM configuration or camera policy.
 pub(super) fn enable(uid: u32) -> Result<(), Error> {
     name(uid)?;
     let path = directory(uid).join("key.tpm");
     if fs::symlink_metadata(&path).is_ok() {
-        super::load(uid)?; // verify TPM key and authenticated full template
+        let (mut config, template) = super::load(uid)?; // validate authenticated full template
+        drop(template);
+        let guard = super::profile::ProfileWriteGuard::new(&directory(uid))?;
+        config.key_provider = Some(super::KeyProvider::Tpm);
+        publish_provider(uid, &config)?;
+        guard.commit()?;
         remove_plaintext(uid)?;
         return Ok(());
     }
     // Fails if the existing template/config/key is missing or corrupt.
-    super::load(uid)?;
+    let (mut config, template) = super::load(uid)?;
+    drop(template);
+    let guard = super::profile::ProfileWriteGuard::new(&directory(uid))?;
     let mut secret = Zeroizing::new([0; 32]);
     protected_file(&directory(uid).join("key"), true, 32)?.read_exact(&mut *secret)?;
     let blob = execute(uid, Stdio::piped(), Some(&secret))?;
@@ -193,12 +258,22 @@ pub(super) fn enable(uid: u32) -> Result<(), Error> {
             .ok_or("No authenticated template after TPM sealing")?;
         fs::rename(&pending, &path)?;
         File::open(directory(uid))?.sync_all()?;
+        config.key_provider = Some(super::KeyProvider::Tpm);
+        publish_provider(uid, &config)?;
+        guard.commit()?;
         remove_plaintext(uid)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&pending);
     }
     result
+}
+fn publish_provider(uid: u32, config: &super::Config) -> Result<(), Error> {
+    let pending = directory(uid).join(".config-pending");
+    super::profile::write_private(&pending, &serde_json::to_vec(config)?)?;
+    fs::rename(pending, directory(uid).join("config.json"))?;
+    File::open(directory(uid))?.sync_all()?;
+    Ok(())
 }
 fn remove_plaintext(uid: u32) -> Result<(), Error> {
     let path = directory(uid).join("key");
@@ -213,6 +288,34 @@ fn remove_plaintext(uid: u32) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fresh_provider_never_creates_plaintext_and_requires_successful_recovery() {
+        assert!(create_key(999).is_err());
+        let dir = tempfile::tempdir().unwrap();
+        let result = persist_new_key(dir.path(), b"synthetic-wrapped-key", |_| {
+            Err("simulated unseal failure".into())
+        });
+        assert!(result.is_err());
+        assert!(!dir.path().join("key").exists());
+        assert!(!dir.path().join("key.tpm").exists());
+        assert!(!dir.path().join(".key-tpm-pending").exists());
+        let _key = persist_new_key(dir.path(), b"synthetic-wrapped-key", |_| {
+            Ok(hello_storage::SecretKey::from_bytes([7; 32]))
+        })
+        .unwrap();
+        assert_eq!(
+            fs::read(dir.path().join("key.tpm")).unwrap(),
+            b"synthetic-wrapped-key"
+        );
+        assert!(!dir.path().join("key").exists());
+        assert!(
+            persist_new_key(dir.path(), b"replacement", |_| panic!(
+                "must not replace an existing provider"
+            ))
+            .is_err()
+        );
+    }
+
     #[test]
     fn exact_binary_key_and_account_binding() {
         assert!(decode_key(&[0; 32]).is_ok());
@@ -278,6 +381,7 @@ mod tests {
             identity: Default::default(),
             threshold: 0.93,
             experimental_without_validated_pad: true,
+            key_provider: None,
         };
         let mut cfg = OpenOptions::new()
             .write(true)

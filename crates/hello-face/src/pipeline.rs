@@ -28,7 +28,8 @@ impl InputShape {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ModelSpec {
-    /// Exact recognizer artifact's SHA-256; zero is an unconfigured sentinel.
+    /// Authenticated embedding namespace; the OpenCV adapter binds its complete
+    /// versioned pipeline, artifacts and runtime. Zero is unconfigured.
     pub digest: [u8; 32],
     pub input: InputShape,
     pub embedding_dimensions: usize,

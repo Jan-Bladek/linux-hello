@@ -1,10 +1,14 @@
-# Optional TPM key protection
+# TPM key protection and legacy migration
 
-Implemented on 2026-10-13 for the separately imported root-owned PAM profile.
-The GUI passphrase store and face recognition/PAD pipeline are unchanged.
-TPM activation is an explicit administrator operation, separate from the GUI's
-three authentication choices. Existing profiles continue using their legacy key
-until migrated. No production PAM configuration is changed by these commands.
+Originally implemented on 2026-10-13; updated 2026-10-18. New root-owned system
+profiles now require TPM wrapping and successful unseal; no adjacent plaintext
+key is created on failure. Existing file-key profiles remain readable until an
+explicit administrator migration. The GUI passphrase store remains separate.
+Installing the TPM policy does not activate PAM or silently migrate keys.
+
+The [pipeline identity update](audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment)
+requires fresh face enrollment after deploying the complete matching bundle.
+Key-only migration does not convert a legacy pipeline reference.
 
 ## Design and limits
 
@@ -42,11 +46,9 @@ Build the optional helper with the existing feature:
 cargo build --release -p hello-sudo --features sudo-face
 ```
 
-Install through the existing integration packaging, preserving the KDE-enabled
-PAM module when KDE is in use. On an already installed host, updating only the
-helper can use an atomic sibling-file replacement followed by `restorecon`.
-A helper build alone is not an instruction to replace the PAM module with a
-sudo-only feature build.
+Install the complete matching bundle through `./install.sh`. Do not replace only
+the verifier or mix worker protocols/build profiles. Preserve the KDE-enabled PAM
+feature when KDE is in use; a helper build alone does not authorize deployment.
 
 For Fedora KDE login, install the separate minimal policy first:
 
@@ -54,11 +56,12 @@ For Fedora KDE login, install the separate minimal policy first:
 sudo bash packaging/tpm/install-policy.sh
 ```
 
-This optional `linuxhello_tpm` policy grants only `open/read/write` on
+The `linuxhello_tpm` policy grants only `open/read/write` on
 `tpm_device_t` character devices to `xdm_t`. That label includes TPM devices,
 not just one pathname. It adds no profile/key writes, unrestricted domain,
 network access or permissive mode. The existing camera policy is unchanged.
-The ordinary installer does not add this policy on non-TPM installations.
+The full installer includes this policy by default; new system references require
+a usable TPM. Installing policy does not create or migrate a key.
 Removing it with `sudo semodule -r linuxhello_tpm` while a profile remains sealed
 will make KDE face authentication fail to the password path.
 
@@ -135,3 +138,13 @@ with real UID 1000/effective UID root, using a temporary fixed-purpose probe and
 a private helper mount; no real face or PAM success is simulated. The test does not claim live facial verification,
 PAD, PCR attestation, suspend/resume, reboot or firmware update qualification.
 See [validation](validation.md) for executed evidence and context limitations.
+
+
+New and explicitly migrated system configurations record `key_provider: "tpm"`.
+If the credential subsequently disappears, validation refuses a leftover file
+key instead of silently downgrading. Legacy configurations without this field
+retain their documented provider-selection behavior until explicit migration or
+re-enrollment. Migration publishes the provider declaration under the profile
+journal before deleting the old file key; interrupted cleanup does not enable
+plaintext fallback. Historical copies remain sensitive and are not securely
+erased by unlinking the active file.

@@ -66,10 +66,13 @@ SFace `alignCrop` produces 112×112 BGR samples. `AlignedFace` holds interleaved
 integer-valued BGR floats in 0..255. `feature` converts these to RGB/NCHW; the
 ONNX model contains its own normalization. No extra image scaling/normalization
 is added. Output must be 128 finite, nonzero values; `Embedding` normalizes their
-L2 norm and binds them to the exact recognizer digest. See the upstream
+L2 norm and binds them to the full versioned pipeline identity. See the upstream
 [alignment and feature implementation](https://github.com/opencv/opencv/blob/4.13.0/modules/objdetect/src/face_recognize.cpp).
-The recognizer digest is checked along with dimensions, template version and
-sensor/IR binding; it is not a cryptographic attestation of the full acquisition path.
+The detector/recognizer, preprocessing/alignment/quality/scoring source, runtime
+and build profile are bound along with dimensions and camera/IR mode. See the
+[pipeline migration](audit-remediation-2026-10-18.md#pipeline-compatibility-and-re-enrollment):
+this update requires fresh enrollment and matching worker protocol LHRDY004.
+Identity binding is not sensor attestation or accuracy/PAD qualification.
 
 ## Infrared processing and quality
 

@@ -14,6 +14,7 @@ pub(super) struct ProfileWriteGuard {
     before: Vec<(&'static str, Option<Zeroizing<Vec<u8>>>)>,
     committed: bool,
     key_before: bool,
+    tpm_before: bool,
 }
 impl ProfileWriteGuard {
     pub(super) fn new(dir: &Path) -> Result<Self, Error> {
@@ -40,6 +41,15 @@ impl ProfileWriteGuard {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
             Err(e) => return Err(e.into()),
         };
+        let tpm_before = match protected_file(&dir.join("key.tpm"), true, 16384) {
+            Ok(_) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e.into()),
+        };
+        match fs::symlink_metadata(dir.join(".key-tpm-pending")) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            _ => return Err("Pending TPM key requires administrator recovery".into()),
+        }
         // Prepare a complete durable index before publishing the blocking
         // marker. No active profile bytes change until new() returns.
         for name in [".profile-update", ".profile-retired"] {
@@ -62,11 +72,12 @@ impl ProfileWriteGuard {
             .ok_or("Invalid profile UID")?
             .parse()?;
         let index = RecoveryIndex {
-            version: 1,
+            version: 2,
             uid,
             template_before: before[0].1.is_some(),
             config_before: before[1].1.is_some(),
             key_before,
+            tpm_before: Some(tpm_before),
         };
         write_private(&journal.join("index.json"), &serde_json::to_vec(&index)?)?;
         std::fs::File::open(&journal)?.sync_all()?;
@@ -76,6 +87,7 @@ impl ProfileWriteGuard {
             dir: dir.to_path_buf(),
             before,
             key_before,
+            tpm_before,
             committed: false,
         })
     }
@@ -124,6 +136,9 @@ impl Drop for ProfileWriteGuard {
                 Err(_) => failed = true,
             }
         }
+        if !self.tpm_before {
+            failed |= remove_new_tpm(&self.dir).is_err();
+        }
         let _ = fs::remove_file(self.dir.join(".config-pending"));
         if failed {
             // Removing config blocks all PAM services, including KDE markers.
@@ -149,6 +164,18 @@ struct RecoveryIndex {
     template_before: bool,
     config_before: bool,
     key_before: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tpm_before: Option<bool>,
+}
+fn remove_new_tpm(dir: &Path) -> Result<(), Error> {
+    for name in ["key.tpm", ".key-tpm-pending"] {
+        match protected_file(&dir.join(name), true, 16384) {
+            Ok(_) => fs::remove_file(dir.join(name))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
 }
 pub(super) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     let mut file = OpenOptions::new()
@@ -234,7 +261,7 @@ pub(super) fn recover_profile(uid: u32) -> Result<(), Error> {
     }
     let index: RecoveryIndex =
         serde_json::from_reader(protected_file(&journal.join("index.json"), true, 4096)?)?;
-    if index.version != 1 || index.uid != uid {
+    if !matches!((index.version, index.tpm_before), (1, None) | (2, Some(_))) || index.uid != uid {
         return Err("Recovery journal account/version mismatch".into());
     }
     let mut originals = Vec::new();
@@ -279,6 +306,9 @@ pub(super) fn recover_profile(uid: u32) -> Result<(), Error> {
                 Err(e)
             }
         })?;
+    }
+    if index.tpm_before == Some(false) {
+        remove_new_tpm(&dir)?;
     }
     if fs::symlink_metadata(dir.join(".config-pending")).is_ok() {
         protected_file(&dir.join(".config-pending"), true, 16384)?;
@@ -347,6 +377,27 @@ mod tests {
         let guard = ProfileWriteGuard::new(&dir).unwrap();
         guard.commit().unwrap();
         assert!(!dir.join(".profile-update").exists());
+        // New v2 journals track fresh TPM publication without backing up any
+        // plaintext key. Ordinary rollback and restart recovery remove only a
+        // newly introduced wrapped provider; existing wrapped keys are retained.
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        write_private(&dir.join("key.tpm"), b"synthetic-new-wrapped-key").unwrap();
+        write_private(&dir.join(".key-tpm-pending"), b"synthetic-pending").unwrap();
+        drop(guard);
+        assert!(!dir.join("key.tpm").exists());
+        assert!(!dir.join(".key-tpm-pending").exists());
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        write_private(&dir.join("key.tpm"), b"synthetic-interrupted-wrapped-key").unwrap();
+        std::mem::forget(guard);
+        recover_profile(uid).unwrap();
+        assert!(!dir.join("key.tpm").exists());
+        write_private(&dir.join("key.tpm"), b"synthetic-existing-wrapped-key").unwrap();
+        let guard = ProfileWriteGuard::new(&dir).unwrap();
+        drop(guard);
+        assert_eq!(
+            fs::read(dir.join("key.tpm")).unwrap(),
+            b"synthetic-existing-wrapped-key"
+        );
         let _global_lease = crate::coordination::AttemptLease::acquire().unwrap();
         let reservation = crate::admission::Admission::reserve(uid).unwrap();
         assert!(crate::admission::Admission::reserve(uid).is_err());

@@ -13,6 +13,8 @@ pub use pipeline::{InputShape, ModelSpec, extract_embedding};
 
 #[cfg(all(feature = "opencv", target_os = "linux"))]
 pub mod opencv_engine;
+#[cfg(all(feature = "opencv", target_os = "linux"))]
+pub mod pipeline_identity;
 
 pub const MAX_EMBEDDING_DIMENSIONS: usize = 2048;
 pub const MAX_TEMPLATE_BYTES: usize = 64 * 1024;

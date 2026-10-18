@@ -59,7 +59,7 @@ def main():
         conf=tmp/'conf';conf.mkdir()
         (conf/'plasmalogin').write_text('auth sufficient /usr/lib64/security/pam_linuxhello.so\nauth required pam_deny.so\naccount required pam_permit.so\n')
         fixture=tmp/'fixture.c'
-        fixture.write_text('#include <unistd.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){return geteuid()==0&&n==4&&(!strcmp(v[1],"verify-service")||!strcmp(v[1],"diagnose-service"))&&(!strcmp(v[3],"sudo")||!strcmp(v[3],"sudo-i")||!strcmp(v[3],"kde")||!strcmp(v[3],"login")||!strcmp(v[3],"hyprlock")||!strcmp(v[3],"plasmalogin")||!strcmp(v[3],"sddm"))&&!strcmp(v[2],EXPECTED_UID)?OUTCOME:1;}\n')
+        fixture.write_text('#include <unistd.h>\n#include <errno.h>\n#include <sys/stat.h>\n#include <string.h>\n#ifndef OUTCOME\n#define OUTCOME 1\n#endif\nint main(int n,char **v){struct stat marker;int missing=lstat("/var/lib/linux-hello/sudo/.operation-update",&marker)<0&&errno==ENOENT;return geteuid()==0&&n==4&&(!strcmp(v[1],"verify-service")||!strcmp(v[1],"diagnose-service"))&&(!strcmp(v[3],"sudo")||!strcmp(v[3],"sudo-i")||!strcmp(v[3],"kde")||!strcmp(v[3],"login")||!strcmp(v[3],"hyprlock")||!strcmp(v[3],"plasmalogin")||!strcmp(v[3],"sddm"))&&!strcmp(v[2],EXPECTED_UID)&&missing?OUTCOME:1;}\n')
         good=tmp/'matched';bad=tmp/'rejected'
         for file,exitcode in [(good,0),(bad,1)]:
             subprocess.run(['/usr/bin/cc','-Wall','-Wextra','-Werror','-O2',f'-DOUTCOME={exitcode}',f'-DEXPECTED_UID="{uid}"','-o',str(file),str(fixture)],check=True)
@@ -164,6 +164,21 @@ def main():
             (conf/'plasmalogin').write_text('auth required pam_deny.so\n'+full)
             assert subprocess.run(command,timeout=10).returncode!=0,'earlier required failure must survive biometric success'
             (conf/'plasmalogin').write_text(full)
+            pending=state/'.operation-update';pending.mkdir(mode=0o700)
+            try:
+                assert subprocess.run(command,timeout=10).returncode!=0,'outer pending state must reject the simulated verifier'
+                # Exercise the exact private-root overlay used by activation,
+                # including xdm_t and an own-UID locker. No sensor is opened:
+                # the fixed verifier fixture checks args and journal absence.
+                import time
+                original_sleep=time.sleep
+                time.sleep=lambda seconds:None
+                try:
+                    m.probe(user,full.encode(),'plasmalogin')
+                    m.probe(user,m.changed(m.LOCKER_DEFAULT,True,'login').encode(),'login')
+                finally:time.sleep=original_sleep
+                assert pending.is_dir(),'private probe must not remove the outer journal'
+            finally:pending.rmdir()
             subprocess.run(['/usr/bin/umount',str(BASE/'hello-sudo')],check=True)
             subprocess.run(['/usr/bin/mount','--bind',str(bad),str(BASE/'hello-sudo')],check=True)
             assert subprocess.run(lock_command,timeout=10).returncode!=0,'unprivileged locker mismatch must reject'

@@ -130,15 +130,14 @@ def configure(data, secret, account, sudo, kde):
     for candidate in (*kde.SERVICES, *lockers):
         paths += [profile / f'pam-{candidate}.enabled', PAM_DIR / candidate,
                   PAM_DIR / kde.layout(candidate)[2]]
-    # Protected encrypted files are held in memory only for rollback, not exported
-    # or logged. Profile keys/templates remain root-private throughout.
-    snapshots = {}
-    for path in paths:
-        if path.exists() or path.is_symlink():
-            meta = sudo.protected(path, path.parent == profile)
-            snapshots[path] = (path.read_bytes(), meta.st_mode & 0o777)
-        else:
-            snapshots[path] = None
+    # Known direct changes have durable intents; unknown subprocess postimages
+    # require explicit recovery review after SIGKILL rather than blind restore.
+    disabled = profile / 'pam-sudo.disabled'
+    planned = {disabled: None if data['sudo'] else (b'linux-hello-sudo-disabled-v1\n', 0o600)}
+    for candidate in (*kde.SERVICES, *lockers):
+        enabled = (candidate == service) or (data['unlock'] and candidate == data.get('unlock_service', 'kde'))
+        planned[profile / f'pam-{candidate}.enabled'] = (b'linux-hello-login-v1\n', 0o600) if enabled else None
+    journal = sudo.operation_journal(sudo.ROOT, paths, planned, sudo.protected, sudo.atomic_write)
     try:
         sudo.bump_epoch()
         profile.mkdir(mode=0o700, exist_ok=True)
@@ -169,15 +168,16 @@ def configure(data, secret, account, sudo, kde):
         progress('Checking screen unlock.' if data['unlock'] else 'Disabling face unlock for this account.')
         selected = data.get('unlock_service', 'kde')
         for candidate in lockers:
-            if (data['unlock'] and candidate == selected) or (not data['unlock'] and (profile / f'pam-{candidate}.enabled').exists()):
+            if (data['unlock'] and candidate == selected) or (profile / f'pam-{candidate}.enabled').exists():
                 command(['/usr/bin/python3', '-B', str(BASE / 'manage-kde.py'),
-                         'enable' if data['unlock'] else 'disable', '--user', account.pw_name, '--service', candidate])
+                         'enable' if data['unlock'] and candidate == selected else 'disable', '--user', account.pw_name, '--service', candidate])
         result = {'sudo': data['sudo'], 'login': data['login'], 'unlock': data['unlock']}
         complete(result)
+        journal.commit()
         return result
     except BaseException:
         progress('Restoring the previous configuration. Password fallback remains available.', recovery=True)
-        sudo.restore_snapshots(snapshots)
+        journal.rollback()
         raise
 
 

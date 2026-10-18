@@ -12,7 +12,7 @@ authentication product release. Read the
 | `hello-core` | Shared validated types, capability states, lifecycle policy | Pure library; cannot grant OS access |
 | `hello-camera` | Camera abstraction, Linux V4L2 enumeration and bounded capture | Current user's existing device access |
 | `hello-face` | Pinned optional YuNet/SFace, quality, model-bound matching and versioned templates | Supplies evidence to GUI/root verifier; no standalone OS authorization or validated PAD |
-| `hello-storage` | UID-bound AEAD records, private atomic storage and administrator import | GUI passphrase keys or separate root-owned PAM key; optional TPM wrapping, no key service |
+| `hello-storage` | UID-bound AEAD records, private atomic storage and administrator import | GUI passphrase keys or separate root-owned PAM key; TPM wrapping required for new system profiles; legacy migration is explicit, no key service |
 | `hello-ipc` | Versioned diagnostic contract and zbus client | Read-only daemon diagnostics |
 | `hello-daemon` | Diagnostic D-Bus endpoint, capability reporting, shutdown | Unprivileged service; no camera or secret access |
 | `hello-fingerprint` | fprintd discovery/status adapter | fprintd retains driver, policy and template ownership |
@@ -91,7 +91,8 @@ The fixed pkexec setup helper coordinates selected sudo/KDE managers, derives
 its own subject UID, serializes setup and restores prior files on ordinary failure.
 It is separate from the diagnostic daemon.
 The GUI key is passphrase-derived; PAM profiles use separate random root-owned
-keys and protected ancestry. [Optional TPM key wrapping](tpm.md) is explicit and has no measured-boot policy. No general-purpose privileged
+keys and protected ancestry. [TPM key wrapping](tpm.md) is required for new system profiles; legacy migration
+is explicit and there is no measured-boot policy. No general-purpose privileged
 management daemon is implemented. A diagnostic test key is not an auth credential.
 Deletion unlinks the
 record; it does not guarantee secure erasure on SSDs, snapshots or backups.

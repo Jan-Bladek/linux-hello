@@ -1,3 +1,4 @@
+import os
 import importlib.util
 import io
 import json
@@ -30,7 +31,7 @@ class PersonSetup(unittest.TestCase):
                       b'{}\n'+struct.pack('!H',1025)]:
             with self.assertRaises((ValueError, struct.error)): m.request(io.BytesIO(frame))
 
-    def test_partial_configuration_rolls_back_the_old_reference_and_pam(self):
+    def test_partial_configuration_retains_preimages_and_requires_review(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             state = root / 'state'; state.mkdir()
@@ -42,8 +43,8 @@ class PersonSetup(unittest.TestCase):
                    pam/'kde': b'old-lock', pam/'plasmalogin': b'old-login',
                    profile/'pam-plasmalogin.enabled': b'old-marker'}
             for path, contents in old.items(): path.write_bytes(contents)
-            def atomic(path, data, mode): path.write_bytes(data)
-            sudo = SimpleNamespace(bump_epoch=lambda:None,ROOT=state, PAM=pam/'sudo', protected=lambda path, private=False: path.stat(), atomic_write=atomic, restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,atomic))
+            def atomic(path, data, mode): path.write_bytes(data);path.chmod(mode)
+            sudo = SimpleNamespace(bump_epoch=lambda:None,ROOT=state, PAM=pam/'sudo', protected=lambda path, private=False: path.stat(), atomic_write=atomic, operation_journal=recovery.operation_journal, restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,atomic))
             kde = SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','linuxhello-'+service+'-auth','system-auth'),SUBSTACK='linuxhello-kde-auth', SERVICES=('plasmalogin','sddm'), detect=lambda:'plasmalogin')
             def failing(args, secret=None):
                 if 'enroll-stdin' in args:
@@ -58,13 +59,22 @@ class PersonSetup(unittest.TestCase):
             with patch.object(m,'PAM_DIR',pam), patch.object(m,'profile_is_private',return_value=True), patch.object(m,'command',side_effect=failing), patch.object(m.time,'sleep'), patch.object(m.subprocess,'run'), patch.object(m,'progress'):
                 with self.assertRaises(RuntimeError):
                     m.configure(data,bytearray(b'separate-phrase'),SimpleNamespace(pw_uid=1000,pw_name='owner'),sudo,kde)
+            self.assertEqual((pam/'sudo').read_bytes(),b'partial-change')
+            self.assertTrue((state/'.operation-update/index.json').exists())
+            # Unknown external-command writes require an explicit reviewed
+            # fingerprint, rather than overwriting a possible admin edit.
+            doc=json.loads((state/'.operation-update/index.json').read_bytes())
+            paths=[Path(e['path']) for e in doc['entries']]
+            journal=recovery.operation_journal(state,paths,{},sudo.protected,atomic,begin=False)
+            with patch.object(recovery.subprocess,'run'):
+                journal.rollback(expected_state=journal.inspect()['expected_state'])
             for path, contents in old.items(): self.assertEqual(path.read_bytes(), contents)
 
     def test_disabling_all_does_not_import_or_remove_another_accounts_sudo_path(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);state=root/'state';state.mkdir();pam=root/'pam';pam.mkdir()
             (state/'.anchor').write_bytes(b'');(pam/'sudo').write_bytes(b'other-users-still-enabled')
-            sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),atomic_write=lambda p,d,mode:p.write_bytes(d),restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,lambda p,b,mode:p.write_bytes(b)))
+            sudo=SimpleNamespace(bump_epoch=lambda:None,ROOT=state,PAM=pam/'sudo',protected=lambda p,private=False:p.stat(),atomic_write=lambda p,d,mode:(p.write_bytes(d),p.chmod(mode)),operation_journal=recovery.operation_journal,restore_snapshots=lambda snapshots:recovery.restore_snapshots(snapshots,lambda p,b,mode:(p.write_bytes(b),p.chmod(mode))))
             kde=SimpleNamespace(LOCK_SERVICES=('kde','hyprlock','login'),layout=lambda service:('# kde\n','auth substack face\n','linuxhello-'+service+'-auth','system-auth'),SUBSTACK='linuxhello-kde-auth',SERVICES=('plasmalogin','sddm'))
             calls=[]
             with patch.object(m,'PAM_DIR',pam),patch.object(m,'profile_is_private',return_value=True),patch.object(m,'command',side_effect=lambda args,secret=None:calls.append(args)),patch.object(m,'progress'),patch.object(m,'complete'):

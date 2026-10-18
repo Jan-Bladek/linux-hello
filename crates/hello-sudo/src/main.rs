@@ -30,6 +30,12 @@ use coordination::{
 #[cfg(test)]
 use profile::write_private;
 use profile::{ProfileWriteGuard, recover_profile};
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum KeyProvider {
+    File,
+    Tpm,
+}
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Config {
@@ -39,6 +45,8 @@ struct Config {
     identity: hello_camera::DeviceIdentity,
     threshold: f32,
     experimental_without_validated_pad: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key_provider: Option<KeyProvider>,
 }
 impl Config {
     fn validate(&self, uid: u32) -> Result<(), Error> {
@@ -63,6 +71,17 @@ fn directory(uid: u32) -> PathBuf {
 fn key(uid: u32) -> Result<hello_storage::SecretKey, Error> {
     if let Some(key) = tpm::load(uid)? {
         return Ok(key);
+    }
+    // A declared TPM provider is sticky: losing its blob must not revive a
+    // stale plaintext key left by interrupted cleanup or a historical copy.
+    let config: Config = serde_json::from_reader(protected_file(
+        &directory(uid).join("config.json"),
+        true,
+        16384,
+    )?)?;
+    config.validate(uid)?;
+    if config.key_provider == Some(KeyProvider::Tpm) {
+        return Err("Required TPM credential is missing; plaintext fallback is forbidden".into());
     }
     let mut bytes = Zeroizing::new([0; 32]);
     let file = protected_file(&directory(uid).join("key"), true, 32)?;
@@ -318,6 +337,7 @@ async fn import_reference(
         identity: device.identity.clone(),
         threshold,
         experimental_without_validated_pad: true,
+        key_provider: None,
     };
     config.validate(uid)?;
     let template = verify_template(config, template, cancel.clone(), true).await?;
@@ -332,6 +352,7 @@ async fn import_reference(
         identity: device.identity.clone(),
         threshold,
         experimental_without_validated_pad: true,
+        key_provider: None,
     };
     if fs::symlink_metadata(dir.join(".config-pending")).is_ok() {
         return Err("Pending profile update requires administrator recovery".into());
@@ -344,19 +365,23 @@ async fn import_reference(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(error) => return Err(error.into()),
     };
-    if !keypath.exists() && !has_tpm {
-        let mut bytes = Zeroizing::new([0; 32]);
-        getrandom::fill(&mut *bytes)?;
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&keypath)?;
-        file.write_all(&*bytes)?;
-        file.sync_all()?;
-    }
-    let store = hello_storage::SecureStore::open(&dir, uid, key(uid)?)?;
+    let (provider, provider_kind) = if !keypath.exists() && !has_tpm {
+        (tpm::create_key(uid).map_err(|error| -> Error {
+            format!("A new system profile requires TPM wrapping; no plaintext fallback was created: {error}").into()
+        })?, KeyProvider::Tpm)
+    } else {
+        (
+            key(uid)?,
+            if has_tpm {
+                KeyProvider::Tpm
+            } else {
+                KeyProvider::File
+            },
+        )
+    };
+    let mut config = config;
+    config.key_provider = Some(provider_kind);
+    let store = hello_storage::SecureStore::open(&dir, uid, provider)?;
     store.save(&template)?;
     let pending = dir.join(".config-pending");
     let mut file = OpenOptions::new()
@@ -452,6 +477,7 @@ async fn run() -> Result<(), Error> {
         [command, uid, service] if command == "verify-service" || command == "diagnose-service" =>
             verify(uid.parse()?, cancel, command == "diagnose-service", Some(service)).await,
         [command, uid] if command == "validate" => {
+            let _read = read_lock()?;
             let (config, template) = load(uid.parse()?)?;
             let reference = SessionReference::from_template(template)?;
             reference.validate_strict_recognition(&config.identity, true)?;
@@ -640,6 +666,7 @@ mod tests {
             identity: Default::default(),
             threshold: 0.8,
             experimental_without_validated_pad: true,
+            key_provider: None,
         };
         assert!(c.validate(1000).is_ok());
         c.threshold = 0.93;

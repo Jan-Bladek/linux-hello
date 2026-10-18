@@ -1,6 +1,6 @@
 # Executed validation
 
-## Current evidence summary — reviewed 2026-10-17
+## Current evidence summary — reviewed 2026-10-18
 
 | Area | Latest recorded evidence | Remaining limitation |
 | --- | --- | --- |
@@ -18,6 +18,38 @@ Current usage and activation are in [scope](index.md), [inference](inference.md)
 [sudo](sudo-integration.md), [KDE](kde-login.md) and
 [Hyprland / Noctalia](hyprland-noctalia.md). This document preserves evidence;
 it is not the installation guide.
+
+## Audit follow-up — 2026-10-18
+
+See the [finding-by-finding remediation and recovery guide](audit-remediation-2026-10-18.md).
+This source update requires pipeline re-enrollment after installing the complete
+matching bundle. Prior owner face/PAM/TPM confirmations below describe previous
+builds; they are not new physical acceptance or PAD results for this pipeline.
+
+| Check | Actual result |
+| --- | --- |
+| Default workspace tests | 81 passed, 6 ignored |
+| Optional-feature workspace tests | 181 passed, 19 ignored; ignored entries are not acceptance evidence |
+| Python regressions | 75 passed, including subprocess-death journal and installer recovery cases |
+| Isolated session bus | 3 passed |
+| Root private-state regressions | 6 explicitly selected tests passed, including interrupted-profile recovery, actual reader denial, sticky TPM provider and worker credential drop before native model parsing |
+| Real libpam dispatch with synthetic verifier | Private-namespace success/rejection, account/setcred, caller restrictions and full shadow-state probes passed; production journal retained |
+| Native inference buffer reuse | Explicit ignored integration test passed with pinned public models and synthetic non-face tensors; no biometric accuracy inferred |
+| Default and optional all-target Clippy | Passed with warnings denied |
+| Strict dependency audit | Passed: 602 dependencies, 1,338 advisories; no advisory ignores added |
+| License/source/ban checks | Passed; existing duplicate-version and unused-allowance warnings remain |
+| Complete offline build-only installer | Release compilation, tests, pinned models, C probe, both SELinux modules and staging passed; no application files installed |
+| GUI smoke | KDE/KWin Wayland process remained healthy for three seconds with software renderer and DISPLAY removed; no independent window-mapping query or face scan |
+| Source packaging | Archive creation passed, new modules included and private root audit excluded |
+| Formatting, documentation links, shell syntax and whitespace | Passed |
+
+The [machine-readable record](audit-followup-2026-10-18-validation.json) binds the
+source files and local evidence hashes. Privileged fixtures used a private mount
+namespace; SELinux remained Enforcing. No production PAM configuration, personal
+reference or active key was changed. Normal sudo authorization can update its
+existing runtime admission state. Physical PAD/NIR accuracy, TPM boot/rollback,
+fairness and full deployment/caller qualification remain open as listed in the
+remediation guide. Historical confirmations below do not qualify this new build.
 
 ## GUI dependency advisory remediation — 2026-10-17
 

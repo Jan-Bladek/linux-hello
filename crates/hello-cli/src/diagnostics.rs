@@ -68,7 +68,27 @@ static NEXT_REFERENCE_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic
 pub fn capture_binding(identity: &DeviceIdentity, ir: bool) -> Result<[u8; 32], Error> {
     use sha2::{Digest, Sha256};
     let mut digest = Sha256::new();
-    digest.update(b"linux-hello-diagnostic-camera-v1");
+    digest.update(b"linux-hello-diagnostic-camera-pipeline-v2");
+    digest.update(hello_face::pipeline_identity::digest()?);
+    // Bind raw pixel conversion, sensor configuration and the actual live/worker
+    // bridge as well as inference. Cache only public source metadata, never a
+    // face result. Length framing preserves source-component boundaries.
+    static ACQUISITION: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    digest.update(ACQUISITION.get_or_init(|| {
+        let mut source = Sha256::new();
+        for text in hello_camera::ACQUISITION_SOURCES.iter().copied().chain([
+            include_str!("diagnostics.rs"),
+            include_str!("diagnostics/live.rs"),
+            include_str!("diagnostics/passive.rs"),
+            include_str!("face_worker/mod.rs"),
+            include_str!("../Cargo.toml"),
+            include_str!("../../../Cargo.toml"),
+        ]) {
+            source.update((text.len() as u64).to_le_bytes());
+            source.update(text.as_bytes());
+        }
+        source.finalize().into()
+    }));
     digest.update(serde_json::to_vec(identity)?);
     digest.update([u8::from(ir)]);
     Ok(digest.finalize().into())
@@ -232,7 +252,7 @@ impl SessionReference {
             Some(Reference::Multi(template))
                 if template.capture_binding() != Some(capture_binding(identity, ir)?) =>
             {
-                Err("camera or IR mode differs from saved reference".into())
+                Err("Camera, IR mode or inference pipeline differs from the saved reference. Re-enroll; automatic conversion is unsafe.".into())
             }
             _ => Ok(()),
         }
@@ -394,7 +414,7 @@ impl SessionReference {
             }
             Reference::Multi(template) => {
                 if template.capture_binding() != Some(capture_binding(identity, ir)?) {
-                    return Err("camera or IR mode differs from saved reference; use the original settings or collect new samples".into());
+                    return Err("Camera, IR mode or inference pipeline differs from the saved reference. Re-enroll; automatic conversion is unsafe.; use the original settings or collect new samples".into());
                 }
                 Ok(Some(template.similarity(embedding)?))
             }
@@ -1662,6 +1682,45 @@ mod tests {
             result.classify(RecognitionThreshold::new(0.8).unwrap()),
             RecognitionDecision::NotRecognized
         );
+    }
+
+    #[tokio::test]
+    async fn recognizer_only_legacy_binding_is_rejected_before_capture() {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"linux-hello-diagnostic-camera-v1");
+        hash.update(serde_json::to_vec(&identity()).unwrap());
+        hash.update([1]);
+        let legacy: [u8; 32] = hash.finalize().into();
+        assert_ne!(legacy, capture_binding(&identity(), true).unwrap());
+        let reference = strict_reference();
+        {
+            let mut locked = reference.lock().unwrap();
+            let Some(Reference::Multi(template)) = locked.reference.take() else {
+                panic!("fixture")
+            };
+            // Legacy templates remain parseable, but must not be silently rebound.
+            let bytes = template.bind_capture(legacy).unwrap().to_bytes().unwrap();
+            locked.reference = Some(Reference::Multi(
+                hello_face::Template::from_bytes(&bytes).unwrap(),
+            ));
+        }
+        let mut captures = 0;
+        let cancel = AtomicBool::new(false);
+        let result = verify_person_observed(
+            &reference,
+            &identity(),
+            true,
+            &cancel,
+            || {
+                captures += 1;
+                std::future::ready(Ok(geometric_probe(70, 0.0, vec![1.0, 0.0])))
+            },
+            |_| {},
+        )
+        .await;
+        assert!(result.unwrap_err().to_string().contains("Re-enroll"));
+        assert_eq!(captures, 0);
     }
 
     #[tokio::test]
