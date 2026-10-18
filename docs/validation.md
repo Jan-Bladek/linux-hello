@@ -51,6 +51,32 @@ existing runtime admission state. Physical PAD/NIR accuracy, TPM boot/rollback,
 fairness and full deployment/caller qualification remain open as listed in the
 remediation guide. Historical confirmations below do not qualify this new build.
 
+## Admission SELinux follow-up — 2026-10-18
+
+A real GUI re-enrollment saved a valid new protected reference, but setup failed
+at the second display-manager PAM probe. The observed AVC denied `xdm_t` unlink
+of a `var_lib_t` admission record. The active durable account journal then
+correctly blocked sudo/login/unlock before camera capture. After explicit review,
+the already verified new reference was retained with all prior PAM files, keys
+and opt-ins unchanged; its pending import was retired. No old template was rebound.
+
+Installed the complete admission fix: reserved temporary basename, scoped
+`linuxhello_admission_t` and packaged persistent counter contexts, plus preservation
+of runtime labels between private probes. Existing key/template labels remain
+`var_lib_t`; SELinux remains Enforcing. No embedding/acquisition identity change
+or additional re-enrollment is required by this follow-up itself.
+
+Executed 75 Python tests, focused Rust/PAM/GUI installer tests and release build,
+warnings-denied helper Clippy, formatting and seven explicit private-state root
+regressions. The real SELinux synthetic regression passed repeated root-to-xdm
+counter replacement while protected-file deletion was denied. Both real
+`plasmalogin` probe rounds and both own-account `kde` PAM rounds passed
+AUTH/ACCT/SETCRED0 using the new face reference; the actual own-account KDE
+launcher also completed verification. These tests do
+not open a session, lock/restart the desktop, establish independent subject
+identity, or measure PAD/FAR/FRR. Physical greeter/locked-UI qualification remains
+separate from the probes.
+
 ## GUI dependency advisory remediation — 2026-10-17
 
 All five maintenance-advisory packages from the initial follow-up were removed

@@ -203,10 +203,11 @@ def probe(user, content, service=None):
         run_probe(command,1)
         sudo.atomic_write(conf / service, content, mode)
         sudo.atomic_write(conf / layout(service)[2], diagnostic_stack(auth_stack(service).encode()), mode)
-        subprocess.run(['/usr/sbin/restorecon','-R',str(conf)], check=True)
-        # These temporary copies model /var/lib state, retaining the existing
-        # xdm_t read boundary without granting new SELinux access.
-        subprocess.run(['/usr/bin/chcon','-R','-t','var_lib_t',str(conf)], check=True)
+        # Relabel only these new PAM files. Recursively resetting the shadow
+        # state here destroys admission labels created during the first check.
+        pam_files = [str(conf / service), str(conf / layout(service)[2])]
+        subprocess.run(['/usr/sbin/restorecon', *pam_files], check=True)
+        subprocess.run(['/usr/bin/chcon','-t','var_lib_t', *pam_files], check=True)
         # Identical SELinux domain to the real Plasma/SDDM root helper. Probe
         # authenticates/checks account/credentials but opens no desktop session.
         run_probe(command,2)

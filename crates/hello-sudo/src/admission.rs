@@ -55,14 +55,27 @@ fn read(uid: u32) -> Result<Option<Vec<u8>>, Error> {
 }
 fn write(uid: u32, bytes: &[u8]) -> Result<(), Error> {
     let dir = directory(uid);
+    write_at(&dir, bytes)
+}
+fn write_at(dir: &std::path::Path, bytes: &[u8]) -> Result<(), Error> {
     let path = dir.join(".admission.json");
     protected_path(&path)?;
     if fs::symlink_metadata(&path).is_ok() {
         protected_file(&path, true, 256)?;
     }
-    let mut nonce = [0; 8];
-    getrandom::fill(&mut nonce)?;
-    let pending = dir.join(format!(".admission-{:016x}", u64::from_le_bytes(nonce)));
+    // A reserved basename gives every supported caller the same SELinux
+    // filename transition. Random names inherited var_lib_t, which xdm_t
+    // cannot unlink when atomically replacing a record written by sudo.
+    // The global AttemptLease excludes another writer, including cleanup.
+    let pending = dir.join(".linux-hello-admission-pending");
+    match fs::symlink_metadata(&pending) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
+        Ok(_) => {
+            protected_file(&pending, true, 256)?;
+            fs::remove_file(&pending)?;
+        }
+    }
     let result = (|| {
         super::profile::write_private(&pending, bytes)?;
         fs::rename(&pending, path)?;
@@ -126,6 +139,39 @@ impl Drop for Admission {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "root private mount namespace with synthetic audit marker required"]
+    fn root_atomic_replacements_preserve_other_profile_files() {
+        // SAFETY: geteuid takes no arguments or pointers.
+        assert_eq!(unsafe { libc::geteuid() }, 0);
+        assert_eq!(
+            fs::read(std::path::Path::new(crate::boundary::ROOT).join(".audit-test-only")).unwrap(),
+            b"synthetic-only\n"
+        );
+        let dir = directory(1004);
+        fs::create_dir(&dir).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        super::super::profile::write_private(&dir.join("key"), b"synthetic-protected-key").unwrap();
+        write_at(&dir, b"first").unwrap();
+        write_at(&dir, b"second").unwrap();
+        assert_eq!(fs::read(dir.join(".admission.json")).unwrap(), b"second");
+        let pending = dir.join(".linux-hello-admission-pending");
+        super::super::profile::write_private(&pending, b"interrupted-before-publication").unwrap();
+        write_at(&dir, b"third").unwrap();
+        assert!(!pending.exists());
+        std::os::unix::fs::symlink("key", &pending).unwrap();
+        assert!(write_at(&dir, b"invalid").is_err());
+        fs::remove_file(&pending).unwrap();
+        fs::hard_link(dir.join("key"), &pending).unwrap();
+        assert!(write_at(&dir, b"invalid").is_err());
+        assert_eq!(
+            fs::read(dir.join("key")).unwrap(),
+            b"synthetic-protected-key"
+        );
+        assert_eq!(fs::read(dir.join(".admission.json")).unwrap(), b"third");
+    }
+
     #[test]
     fn cooldown_is_uid_bound_monotonic_and_resets_on_new_boot() {
         let state = State {

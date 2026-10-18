@@ -55,8 +55,13 @@ answers the original PAM password prompt with masked terminal input, never from
 arguments/environment/files. It is not used by the verifier or activation.
 
 Fedora's existing `xdm_t` rules already permit reading/writing/ioctls on
-`v4l_device_t`. The shipped small SELinux module adds only `chr_file map` for that
-same source/target so bounded MMAP capture works. SELinux stays enforcing; no
+`v4l_device_t`. The shipped SELinux module adds `chr_file map` for that
+same source/target so bounded MMAP capture works. The admission counter and its
+reserved temporary file additionally use `linuxhello_admission_t`, allowing
+atomic counter replacement across sudo and the display manager. Model/template
+and key files retain their existing protected types; the module grants no
+`xdm_t` unlink permission on generic `var_lib_t` files. The package includes exact
+counter file-context rules, and installation relabels existing counters. SELinux stays enforcing; no
 permissive/unconfined domain, blanket audit2allow or home/key/network access is
 added. Only the standalone diagnostic probe receives a persistent `xdm_exec_t`
 entrypoint label so tests run in the same domain as the actual display-manager
@@ -193,8 +198,32 @@ that vendor file, it removes the override to resume vendor updates. Otherwise it
 preserves the administrator's remaining configuration. Backups/metadata remain
 root-only. Copying vendor defaults creates an override: review it on package
 upgrades. sudo enrollment and activation are independent and remain available.
-To remove the optional camera map policy after all graphical integrations are
+To remove the camera/admission policy after all graphical integrations are
 disabled, an administrator can run `sudo semodule -r linuxhello_kde`.
+
+### Camera never starts after interrupted setup
+
+An active `.operation-update` blocks all facial authentication before capture,
+including sudo. Use the password and inspect the protected journal with
+`sudo /usr/local/libexec/linux-hello-sudo/recover-operation.py inspect`.
+Do not delete the marker to force authentication. Follow the
+[reviewed recovery procedure](audit-remediation-2026-10-18.md#durable-account-operations).
+
+The 2026-10-18 admission follow-up fixes an observed SELinux denial on replacing
+`.admission.json`, which could interrupt the second login probe and leave setup
+pending. Build/install the complete bundle so the helper, policy and file labels
+agree. The second private probe now retains runtime counter labels. This fix
+does not change the embedding pipeline: a reference freshly enrolled after the
+preceding pipeline update stays compatible.
+
+The dedicated filename transition assigns a label without granting other
+domains access to the private profile directory; see the upstream
+[SELinux transition semantics](https://github.com/SELinuxProject/selinux-notebook/blob/main/src/type_statements.md#type_transition).
+For a development-only policy regression, run
+`sudo python3 -B packaging/kde/test-admission-policy.py` from reviewed source.
+It uses synthetic files in a private mount namespace, replaces only a private
+probe executable, and checks that protected-file deletion remains denied. It
+requires SELinux Enforcing and the installed admission policy; no camera opens.
 
 Development tests before opt-in:
 

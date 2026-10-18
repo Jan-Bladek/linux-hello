@@ -77,7 +77,9 @@ Setup runs live face/PAM checks before activation. Close camera preview, face th
 camera and wait for the result. Ordinary failure restores the previous system
 state. See [unified setup](kde-login.md#unified-gui-setup).
 
-Updates do not require re-enrollment. Close the old window and reopen the installed
+Dependency/UI-only updates generally retain references. An embedding/acquisition
+identity change requires re-enrollment; see the release's migration notes.
+Close the old window and reopen the installed
 application. The installer does not log out, lock the session or restart the
 display manager. Account controls in Overview/Settings can inspect, pause or
 remove your protected system reference; see [account management](account-management.md).

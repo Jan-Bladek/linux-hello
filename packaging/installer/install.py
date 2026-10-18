@@ -100,7 +100,10 @@ def stage_files(stage, models, with_tpm):
         folder = 'kde' if name.endswith('kde') else 'tpm'
         run(['/usr/bin/checkmodule', '-M', '-m', '-o', stage / (name + '.mod'),
              REPO / 'packaging' / folder / (name + '.te')])
-        run(['/usr/bin/semodule_package', '-o', stage / (name + '.pp'), '-m', stage / (name + '.mod')])
+        package = ['/usr/bin/semodule_package', '-o', stage / (name + '.pp'), '-m', stage / (name + '.mod')]
+        if name == 'linuxhello_kde':
+            package += ['-f', REPO / 'packaging/kde/linuxhello_kde.fc']
+        run(package)
         (stage / (name + '.mod')).unlink()
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip() if (REPO / '.git').exists() else 'source-archive'
     if (REPO / '.git').exists() and subprocess.check_output(['git', 'status', '--porcelain'], cwd=REPO): commit += '-dirty'

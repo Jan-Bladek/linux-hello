@@ -1,10 +1,24 @@
-module linuxhello_kde 1.0;
+module linuxhello_kde 1.1;
 require {
     type xdm_t;
     type v4l_device_t;
+    type var_lib_t;
+    attribute domain;
+    attribute file_type;
     class chr_file map;
+    class file { create open read write getattr setattr rename unlink };
 }
 # Fedora already permits the root display-manager domain to read/write/ioctl
 # V4L devices. Its existing rules omit MMAP, which our bounded capture needs.
 # No new access to keys, home files, networking or unconfined domains is granted.
 allow xdm_t v4l_device_t:chr_file map;
+
+# Only the admission record is replaceable. Never grant unlink on var_lib_t:
+# encrypted references and TPM blobs keep their existing protected labels.
+type linuxhello_admission_t;
+typeattribute linuxhello_admission_t file_type;
+allow xdm_t linuxhello_admission_t:file { create open read write getattr setattr rename unlink };
+# All callers that already have access to the root-private profile directory
+# create this reserved basename with a compatible label. This assigns a label;
+# it grants no caller access to a profile, key or another user's files.
+type_transition domain var_lib_t:file linuxhello_admission_t ".linux-hello-admission-pending";

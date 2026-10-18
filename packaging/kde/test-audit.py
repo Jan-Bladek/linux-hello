@@ -26,6 +26,7 @@ def main():
         (sys.argv[1], 'profile::tests::interrupted_prepare_and_retired_cleanup_preserve_the_active_generation'),
         (sys.argv[1], 'coordination::operation_tests::actual_reader_refuses_interrupted_operations_in_private_state'),
         (sys.argv[1], 'tests::delegated_verification_keeps_parent_exclusive_lock'),
+        (sys.argv[1], 'admission::tests::root_atomic_replacements_preserve_other_profile_files'),
         (sys.argv[2], 'face_worker::limits::audit_tests::root_worker_drops_all_credentials_before_real_model_parsing'),
     ]
     for executable in {exe for exe, _ in expected}:
@@ -47,6 +48,7 @@ def main():
             subprocess.run([sys.argv[1],'--exact','tests::interrupted_publication_recovers_only_previous_synthetic_profile','--ignored','--nocapture'],check=True,timeout=20)
             subprocess.run([sys.argv[1],'--exact','profile::tests::interrupted_prepare_and_retired_cleanup_preserve_the_active_generation','--ignored','--nocapture'],check=True,timeout=20)
             subprocess.run([sys.argv[1],'--exact','coordination::operation_tests::actual_reader_refuses_interrupted_operations_in_private_state','--ignored','--nocapture'],check=True,timeout=10)
+            subprocess.run([sys.argv[1],'--exact','admission::tests::root_atomic_replacements_preserve_other_profile_files','--ignored','--nocapture'],check=True,timeout=10)
             with (STATE/'.setup.lock').open('rb') as lock:
                 fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
                 subprocess.run([sys.argv[1],'--exact','tests::delegated_verification_keeps_parent_exclusive_lock','--ignored','--nocapture'],check=True,timeout=10,
